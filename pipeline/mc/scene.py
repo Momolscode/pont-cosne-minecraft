@@ -7,6 +7,15 @@
 #  divers  : save_blend=chemin.blend   bounces  diff_b  transp_b  adapt
 #            border=x0,x1,y0,y1 (fractions 0-1, y=0 en bas : rend et recadre une zone, pour tester vite)
 #            threads=N (0 = auto)   seed=N
+#  animation : anim=1 -> OUT devient un motif de fichiers (ex. frames/f_####.png ; les # = n° de frame, 1..frames)
+#            frames=150  fps=15  frame_start=1  frame_end=frames  frame_step=1 (sous-ensemble / reprise)
+#            overwrite=0 : les frames déjà présentes sont sautées (écriture via .part.png puis renommage)
+#            fin du travelling : cam_fwd1 cam_right1 cam_up1 cam_yaw1 cam_pitch1 zoom1 (défaut = valeur de départ)
+#            ease=1 (0 = linéaire, 1 = départ/arrivée adoucis)   le soleil reste fixe dans le monde
+#            cloud_dx cloud_dy : dérive des nuages sur toute la durée (m ; dx vers la droite de la vue d'origine, dy vers le fond)
+#            w_flow : courant de l'eau (m/s, vers la droite de l'image)  w_evol (défaut w_flow/2) : évolution sur place
+#            sway : amplitude des herbes au sommet (m, 0 = off)  sway_T (période, s, 2.6)  sway_L (longueur d'onde du vent, m, 7)
+#            graine de bruit fixe, render.use_persistent_data (la scène n'est construite qu'une fois)
 import bpy, numpy as np, math, sys, time, json
 from mathutils import Matrix, Vector
 import os
@@ -32,17 +41,24 @@ def rot(yaw,pitch,roll):
     cy_,sy_=np.cos(yaw),np.sin(yaw); cp,sp=np.cos(pitch),np.sin(pitch); cr,sr=np.cos(roll),np.sin(roll)
     fwd=np.array([cy_*cp, sy_*cp, sp]); right=np.array([sy_,-cy_,0.0]); up=np.cross(right,fwd)
     return fwd, cr*right+sr*up, -sr*right+cr*up
-cx,cy,cz,yaw,pitch,roll,fpx=P[:7]
+cx0,cy0,cz0,yaw0,pitch0,roll,fpx=P[:7]
 roll=kv("roll_scale",1.0)*roll
-fwd0,_,_=rot(yaw,pitch,roll)                      # axe de la photo d'origine (référence soleil)
-yaw+=math.radians(kv("cam_yaw",0.0)); pitch+=math.radians(kv("cam_pitch",0.0))
-_fh=(math.cos(yaw),math.sin(yaw)); _rh=(math.sin(yaw),-math.cos(yaw))
-cx+=kv("cam_fwd",0.0)*_fh[0]+kv("cam_right",0.0)*_rh[0]; cy+=kv("cam_fwd",0.0)*_fh[1]+kv("cam_right",0.0)*_rh[1]; cz+=kv("cam_up",0.0)
-fwd,rgt,upv=rot(yaw,pitch,roll)
+fwd0,_,_=rot(yaw0,pitch0,roll)                    # axe de la photo d'origine (référence soleil)
+CAMK=("cam_fwd","cam_right","cam_up","cam_yaw","cam_pitch","zoom")
+CAM0={k:kv(k,1.0 if k=="zoom" else 0.0) for k in CAMK}
+def cam_pose(c):
+    """paramètres caméra (dict CAMK) -> matrice monde, focale (mm), (cx,cy,cz,yaw,pitch,fwd,rgt,upv)"""
+    yaw=yaw0+math.radians(c["cam_yaw"]); pitch=pitch0+math.radians(c["cam_pitch"])
+    _fh=(math.cos(yaw),math.sin(yaw)); _rh=(math.sin(yaw),-math.cos(yaw))
+    cx=cx0+(c["cam_fwd"]*_fh[0]+c["cam_right"]*_rh[0]); cy=cy0+(c["cam_fwd"]*_fh[1]+c["cam_right"]*_rh[1]); cz=cz0+c["cam_up"]
+    fwd,rgt,upv=rot(yaw,pitch,roll)
+    M=Matrix(((rgt[0],upv[0],-fwd[0],cx),(rgt[1],upv[1],-fwd[1],cy),(rgt[2],upv[2],-fwd[2],cz),(0,0,0,1)))
+    return M,fpx/720.0*36.0*c["zoom"],(cx,cy,cz,yaw,pitch,fwd,rgt,upv)
+ANIM=kv("anim",0)>0                               # mode animation (section en fin de fichier)
 cam=bpy.data.cameras.new("cam"); co=bpy.data.objects.new("cam",cam); sc.collection.objects.link(co)
-M=Matrix(((rgt[0],upv[0],-fwd[0],cx),(rgt[1],upv[1],-fwd[1],cy),(rgt[2],upv[2],-fwd[2],cz),(0,0,0,1)))
+M,_lens,(cx,cy,cz,yaw,pitch,fwd,rgt,upv)=cam_pose(CAM0)
 co.matrix_world=M
-cam.sensor_fit='HORIZONTAL'; cam.sensor_width=36.0; cam.lens=fpx/720.0*36.0*kv("zoom",1.0)
+cam.sensor_fit='HORIZONTAL'; cam.sensor_width=36.0; cam.lens=_lens
 cam.clip_start=0.1; cam.clip_end=6000
 sc.camera=co
 
@@ -104,6 +120,9 @@ def mat_water():
     dv=nt.nodes.new("ShaderNodeVectorMath"); dv.operation='DIVIDE'; dv.inputs[1].default_value=(8,8,8)
     nz=nt.nodes.new("ShaderNodeTexNoise"); nz.inputs["Scale"].default_value=0.9; nz.inputs["Detail"].default_value=3
     nt.links.new(tc.outputs["Object"],mul.inputs[0]); nt.links.new(mul.outputs[0],fl.inputs[0]); nt.links.new(fl.outputs[0],dv.inputs[0]); nt.links.new(dv.outputs[0],nz.inputs["Vector"])
+    if ANIM:   # décalage animé du bruit après la pixellisation (clés posées en fin de fichier)
+        ofs=nt.nodes.new("ShaderNodeVectorMath"); ofs.operation='ADD'; ofs.name="w_anim"
+        nt.links.new(dv.outputs[0],ofs.inputs[0]); nt.links.new(ofs.outputs[0],nz.inputs["Vector"])
     bump=nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value=kv("w_bump",0.12); bump.inputs["Distance"].default_value=0.05
     nt.links.new(nz.outputs["Fac"],bump.inputs["Height"]); nt.links.new(bump.outputs[0],bs.inputs["Normal"])
     fog_wrap(nt,bs.outputs[0],out)
@@ -191,8 +210,75 @@ if _th>0: sc.render.threads_mode='FIXED'; sc.render.threads=_th
 sc.cycles.seed=kv("seed",0)
 sc.render.image_settings.file_format='PNG'; sc.render.image_settings.color_depth='16'
 sc.render.filepath=OUT
+
+# ---------------- animation (anim=1) : travelling, nuages, eau, herbes -> une clé par frame (save_blend = .blend animé)
+if ANIM:
+    import re
+    NF=kv("frames",150); FPS=kv("fps",15)
+    F0=max(1,kv("frame_start",1)); F1=min(NF,kv("frame_end",NF)); FSTEP=max(1,kv("frame_step",1))
+    OVERWRITE=kv("overwrite",0)>0
+    CAM1={k:kv(k+"1",CAM0[k]) for k in CAMK}      # pose de fin (défaut = départ)
+    EASE=kv("ease",1.0)                           # 0 = linéaire, 1 = smoothstep (départ et arrivée en douceur)
+    _ms=list(re.finditer(r"#+",OUT))
+    if not _ms: OUT=os.path.splitext(OUT)[0]+"_####.png"; _ms=list(re.finditer(r"#+",OUT))
+    if not OUT.lower().endswith(".png"): OUT+=".png"
+    def fpath(f): m=_ms[-1]; return OUT[:m.start()]+str(f).zfill(m.end()-m.start())+OUT[m.end():]
+    os.makedirs(os.path.dirname(OUT),exist_ok=True)
+    sc.frame_start=1; sc.frame_end=NF; sc.render.fps=FPS
+    sc.render.use_persistent_data=True; sc.cycles.use_animated_seed=False   # scène gardée en mémoire, bruit fixe
+    bpy.context.preferences.edit.keyframe_new_interpolation_type='LINEAR'
+    if not kv("fog_nee",0):   # brume = émission vue des seuls rayons caméra : inutile comme lumière (sinon arbre de lumières géant reconstruit à chaque frame)
+        for m in bpy.data.materials:
+            if m.node_tree and any(n.bl_idname=="ShaderNodeLightPath" and n.outputs["Is Camera Ray"].is_linked for n in m.node_tree.nodes):
+                m.cycles.emission_sampling='NONE'
+    fh0=np.array([math.cos(yaw0),math.sin(yaw0)]); rh0=np.array([fh0[1],-fh0[0]])   # axes horizontaux de la vue d'origine
+    CL=kv("cloud_dx",0.0)*rh0+kv("cloud_dy",0.0)*fh0                             # dérive totale des nuages (m)
+    WF=kv("w_flow",0.0); WE=kv("w_evol",0.5*WF)   # eau : courant vers -t (droite de l'image), évolution sur place
+    SWAY=kv("sway",0.0); SWAY_T=kv("sway_T",2.6); SWAY_L=kv("sway_L",7.0)
+    ob_cl=bpy.data.objects.get("cloud"); ob_pl=bpy.data.objects.get("plants")
+    w_nodes=[m.node_tree.nodes["w_anim"] for m in bpy.data.materials if m.node_tree and "w_anim" in m.node_tree.nodes]
+    # herbes : 2 harmoniques x 2 shape keys (cos/sin de la phase) ; déplacement nul au pied, maximal au sommet de chaque quad
+    sk=[]
+    if SWAY>0 and ob_pl:
+        V=np.empty(len(ob_pl.data.vertices)*3,np.float32); ob_pl.data.vertices.foreach_get("co",V); V=V.reshape(-1,4,3)
+        z0q=V[:,:,2].min(1); hq=V[:,:,2].max(1)-z0q; xy=V[:,:,:2].mean(1)      # pied, hauteur et position de chaque quad
+        wz=np.where(hq[:,None]>1e-4,(V[:,:,2]-z0q[:,None])/np.maximum(hq,1e-4)[:,None],0.0)   # 0 en bas, 1 en haut
+        hs=lambda a,b: np.modf(np.abs(np.sin(xy[:,0]*a+xy[:,1]*b)*43758.5453))[0]   # aléa par plante (même valeur pour les 2 quads d'une croix)
+        r1,r2,r3=hs(12.9898,78.233),hs(39.346,11.135),hs(73.156,52.235)
+        an=(r1-0.5)*0.8; d=np.stack([rh0[0]*np.cos(an)-rh0[1]*np.sin(an),rh0[0]*np.sin(an)+rh0[1]*np.cos(an)],1)   # vent vers la droite ±23°
+        amp=SWAY*(0.7+0.6*r2)*hq
+        ob_pl.shape_key_add(name="Basis",from_mix=False)
+        for j,(a_,T_,L_) in enumerate(((1.0,SWAY_T,SWAY_L),(0.3,SWAY_T/2.7,SWAY_L/2.8))):
+            ph=-2*np.pi*(xy@rh0)/L_+(1.2+j)*np.pi*r3                              # onde de vent qui traverse le champ
+            for nm,fn in (("c",np.cos),("s",np.sin)):                            # sin(wt+ph) = sin wt.cos ph + cos wt.sin ph
+                kb=ob_pl.shape_key_add(name=f"sway{j}{nm}",from_mix=False); kb.slider_min=-1.0
+                D=np.zeros_like(V); D[:,:,:2]=wz[:,:,None]*(a_*amp*fn(ph))[:,None,None]*d[:,None,:]
+                kb.data.foreach_set("co",(V+D).reshape(-1)); sk.append((kb,2*np.pi/T_,np.sin if nm=="c" else np.cos))
+    co.rotation_mode='QUATERNION'; q_prev=None
+    for f in range(1,NF+1):
+        u=(f-1)/max(1,NF-1); t=(f-1)/FPS; e=(1-EASE)*u+EASE*u*u*(3-2*u)
+        Mf,cam.lens,_=cam_pose({k:CAM0[k]+(CAM1[k]-CAM0[k])*e for k in CAMK})
+        loc,q,_s=Mf.decompose()
+        if q_prev is not None: q.make_compatible(q_prev)
+        q_prev=q; co.location=loc; co.rotation_quaternion=q
+        co.keyframe_insert("location",frame=f); co.keyframe_insert("rotation_quaternion",frame=f); cam.keyframe_insert("lens",frame=f)
+        if ob_cl and CL.any(): ob_cl.location=(CL[0]*u,CL[1]*u,0.0); ob_cl.keyframe_insert("location",frame=f)
+        if WF or WE:
+            for n in w_nodes: n.inputs[1].default_value=(0.0,WF*t,WE*t); n.inputs[1].keyframe_insert("default_value",frame=f)
+        for kb,om,fn in sk: kb.value=float(fn(om*t)); kb.keyframe_insert("value",frame=f)
+    def render_anim():
+        todo=[f for f in range(F0,F1+1,FSTEP) if OVERWRITE or not (os.path.isfile(fpath(f)) and os.path.getsize(fpath(f))>0)]
+        print(f"ANIM {NF} frames à {FPS} i/s ; frames {F0}-{F1} pas {FSTEP} : {len(todo)} à rendre -> {OUT}",flush=True)
+        T0=time.time()
+        for i,f in enumerate(todo):
+            sc.frame_set(f); p=fpath(f); tmp=p[:-4]+".part.png"; sc.render.filepath=tmp   # écriture atomique (reprise sûre)
+            t0=time.time(); bpy.ops.render.render(write_still=True); os.replace(tmp,p)
+            el=time.time()-T0
+            print(f"FRAME {f} {time.time()-t0:.1f} s  ({i+1}/{len(todo)}, reste ~{el/(i+1)*(len(todo)-i-1)/60:.1f} min)",flush=True)
+        print("RENDER_S",round(time.time()-T0,1))
 _sb=kvs("save_blend","")
 if _sb: bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(_sb))
 _unk=sorted(set(KV)-USED)
 if _unk: print("ATTENTION paramètres inconnus ignorés :",_unk)
-t0=time.time(); bpy.ops.render.render(write_still=True); print("RENDER_S",round(time.time()-t0,1))
+if ANIM: render_anim()
+else: t0=time.time(); bpy.ops.render.render(write_still=True); print("RENDER_S",round(time.time()-t0,1))

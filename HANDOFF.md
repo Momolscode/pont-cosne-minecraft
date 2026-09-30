@@ -125,3 +125,41 @@ py -3.11 -m venv .venv          # ou : uv venv -p 3.11 .venv
   `... scene.py renders/end.png 1080 32 <mêmes params lumière> cam_fwd=12 cam_up=3 cam_pitch=4`
 - Régénérer le monde après avoir modifié `world.py` : `textures.py` → `world.py` → `mesher.py` (tous dans `pipeline\mc\`). Ils produisent `world.npz`.
 - Calibration : `pipeline\geo\fit.py` et `fit_roll.py` produisent `fitP_rollfree.npy`, que lit `scene.py`.
+
+### Animation (travelling avant) et encodage de la story
+
+Avec `anim=1`, `scene.py` rend une séquence. SORTIE devient un motif de fichiers : les `#` prennent le numéro de frame, de 1 à `frames`.
+La frame 1 reprend la composition d'origine. La caméra glisse ensuite jusqu'à la pose de fin (`cam_fwd1`, `cam_right1`, `cam_up1`, `cam_yaw1`, `cam_pitch1`, `zoom1`),
+avec un départ et une arrivée adoucis (`ease=1` ; `ease=0` donne un mouvement linéaire). Le soleil reste fixe dans le monde.
+Les nuages dérivent (`cloud_dx` vers la droite de la vue d'origine, `cloud_dy` vers le fond, en mètres sur toute la durée).
+Les ondulations de l'eau avancent (`w_flow` en m/s ; `w_evol` règle l'évolution sur place). Les herbes ondulent (`sway`, amplitude au sommet en mètres ; `sway_T` et `sway_L`).
+La scène n'est construite qu'une fois (`use_persistent_data`) et la graine du bruit reste fixe.
+
+Rendu de la séquence (trajectoire C recommandée, voir plus bas), puis encodage :
+
+```
+.venv/Scripts/python pipeline/mc/scene.py renders/frames/f_####.png 720 16 sun_az=62 sun_el=4.5 sun_str=18 sky_str=0.10 "sun_col=1.0,0.78,0.56" expo=0.45 anim=1 frames=150 fps=15 cam_fwd1=10 cam_right1=5 cam_yaw1=9 cam_up1=4 cam_pitch1=7 cloud_dx=40 w_flow=0.4 sway=0.08
+.venv/Scripts/python pipeline/encode.py renders/frames/f_####.png renders/story.mp4
+```
+
+Trajectoires testées (même départ, 150 frames, planches de 5 frames en 216×384) :
+
+| | Paramètres de fin | Effet |
+|---|---|---|
+| A | `cam_fwd1=12 cam_up1=3 cam_pitch1=4 cam_yaw1=2` | Travelling avant simple (exemple de la piste C). Le pylône grossit, la pile sort à gauche. |
+| B | `cam_fwd1=16 cam_up1=6 cam_yaw1=3 cam_pitch1=3` | Avant + grue. La caméra passe au-dessus du tablier, qui finit en diagonale au premier plan. |
+| **C** | `cam_fwd1=10 cam_right1=5 cam_yaw1=9 cam_up1=4 cam_pitch1=7` | Arc + grue. Le pylône reste centré, le tablier et les câbles défilent, la 2ᵉ travée et le fleuve se découvrent. |
+
+- Reprise : relancer la même commande. Les frames déjà présentes sont sautées. Chaque frame est écrite en `.part.png`, puis renommée ; une frame interrompue n'est donc jamais prise pour une frame finie.
+  Pour un sous-ensemble, utiliser `frame_start=`, `frame_end=` et `frame_step=` (aperçu rapide). `overwrite=1` refait tout.
+- Planche contact rapide d'une trajectoire : `frames=5` (0, 25, 50, 75 et 100 %) avec `216 8` (216×384, 8 samples).
+- Temps mesurés en 720×1280 avec `threads=2`, pendant qu'un autre rendu à 2 threads tournait (charge ≈ 3,9 sur 4 cœurs) : 64 à 69 s par frame à 16 samples, 87 à 90 s à 24 samples.
+  La construction de la scène prend environ 10 s, une seule fois. Pour 150 frames avec 4 threads sur une machine libre, on peut estimer 1 h 20 à 1 h 40 à 16 samples
+  et 1 h 50 à 2 h 15 à 24 samples. Ces chiffres sont extrapolés, pas mesurés. En 216×384 à 4 samples, une frame prend environ 3 s.
+- En mode anim, les matériaux à brume ne sont plus échantillonnés comme des lumières (`fog_nee=0`). Leur émission n'est vue que par les rayons caméra.
+  L'image est la même en espérance ; seul le bruit change. Sans ce réglage, l'arbre des lumières (des millions de triangles) serait reconstruit à chaque frame, soit 12 à 15 s de plus par frame.
+  `fog_nee=1` rétablit l'échantillonnage exact des images fixes.
+- `encode.py` produit `story.mp4` : H.264 1080×1920, yuv420p BT.709, crf 18, au fps des frames (`--fps`, 15 par défaut), avec mise à l'échelle lanczos.
+  La piste audio vient de `source/pont-cosne_original.mov`, coupée à la durée de la vidéo. Le script produit aussi `story_sans_audio.mp4`.
+  Les métadonnées de la vidéo source, dont la position GPS, ne sont pas recopiées. Si des frames manquent dans la séquence, le script s'arrête et liste celles à rendre.
+  ffmpeg : `--ffmpeg chemin`, sinon celui du PATH, sinon celui du paquet `imageio-ffmpeg` (`pip install imageio-ffmpeg`).
