@@ -1,6 +1,64 @@
 # Pont de Cosne × Minecraft — brief de reprise (Claude Code + Higgsfield)
 
-## 0. Démarrage rapide — à coller dans Claude Code
+## 0 bis. V3.1 (30/09/2026, fin de journée) : la version à poster
+
+`renders/story_v31_1080x1920.mp4` (avec la musique d'origine) et `renders/story_v31_1080x1920_sans_audio.mp4`.
+Même trajectoire, même lumière et même durée que la V3 (décisions validées par l'utilisateur). Trois critiques indépendants ont passé la V3 en revue (fidélité à la photo, direction artistique, défauts techniques). Leurs remarques ont été réparties en deux lots corrigés en parallèle, puis fusionnés.
+
+- **Arrière-plan** (branche fix/v31a) :
+  - île plate avec une plage de sable au ras de l'eau ;
+  - chênes bas vert olive, peupliers rares, plus de feuilles orange (l'effet « ville colorée » derrière le tablier a disparu) ;
+  - colline de gauche abaissée ;
+  - brume en deux couches, plus chaude face au soleil ;
+  - nuages teintés pêche, qui s'estompent au loin.
+- **Premier plan et milieu** (branche fix/v31b) :
+  - lagune avec son propre matériau d'eau et une légère lueur, qui ne fait plus « trou noir » ;
+  - grève en galets clairs mêlés d'herbe, buttes arrondies, arbustes plus aérés ;
+  - pile en moellons gris-beige ;
+  - pylône d'un rose passé, comme sur la photo ;
+  - treillis du tablier à diagonales de 3 px et goussets carrés, doublé d'une tôle sombre ;
+  - câbles et suspentes plus fins ;
+  - éclairage d'appoint des ombres (`sky_fill`) ;
+  - léger flou de mouvement de la caméra (`mblur`) ;
+  - joints des galets adoucis, contre le scintillement.
+- **Commande exacte** (les clés V3.1 s'ajoutent à la commande V3 de la section 6) :
+  ```
+  scene.py frames/v31/f_####.png 720 16 sun_az=62 sun_el=4.5 sun_str=18 sky_str=0.10 "sun_col=1.0,0.78,0.56" expo=0.45 anim=1 frames=150 fps=15 cam_fwd1=10 cam_right1=5 cam_yaw1=9 cam_up1=4 cam_pitch1=7 cloud_dx=40 w_flow=0.4 sway=0.08 "cloud_col=1.0,0.56,0.36" cloud_sun=2 cloud_d0=300 cloud_d1=750 fog_d0=80 fog_d=700 "fog_col=0.70,0.68,0.64" fog_warm=0.7 sky_fill=0.16 w_glow=0.1 w_glow_view=1 mblur=1 shutter=0.3
+  ```
+  Les clés sont documentées en tête de `scene.py`. Sans elles, le rendu reste celui de la V3.
+- **Limites relevées au contrôle et non corrigées** :
+  - le petit îlot scintille encore un peu (−18 % au lieu des −30 % visés) ;
+  - les nuages s'estompent dès 300 m, plus tôt que demandé ;
+  - en fin de plan, la bande boisée au-dessus du tablier n'est presque plus visible ;
+  - sous le tablier, le ciel est pêche au lieu du gris-bleu de la photo ;
+  - une petite marche de sable reste visible sur l'île.
+  - Le lot « premier plan » a été interrompu par une limite d'usage avant sa relecture indépendante : seul le contrôle visuel de l'intégration a été fait (5 images, comparaison V3 / V3.1 dans la PR).
+
+## 0. État au 30/09/2026 : V3 vidéo
+
+**La V3 est une vraie vidéo 3D** : `renders/story_v3_1080x1920.mp4`, 10 s, 9:16, 15 i/s, avec la musique de la vidéo d'origine. Il existe aussi une version sans audio, `renders/story_v3_1080x1920_sans_audio.mp4`.
+Tout est rendu avec le pipeline Blender (section 6), sans IA générative : aucune géométrie ne « fond ».
+
+- **Mouvement** : la frame 1 reprend exactement le cadrage de la vidéo. La caméra fait ensuite un arc en montant vers le pylône (trajectoire C, section 6).
+  Nuages cubiques qui dérivent, eau animée, herbes qui ondulent.
+- **Corrections par rapport à la V2** :
+  - tablier en acier gris bleuté, poutres latérales à croisillons en X et goussets en losange, passerelle en treillis sous le tablier ;
+  - pelouse d'automne variée (vert olive, herbe sèche, plaques de terre, chemin de terre en bas) ;
+  - petits triangles parasites supprimés (cause : parois de marches de terrain d'un bloc, éclairées en rasant) ;
+  - grève du milieu organisée en bandes comme sur la photo : lagune avec le reflet de la pile, galets calcaires, buttes d'herbe, deux arbustes.
+- **Limites restantes** :
+  - rive d'en face et arbres lointains encore peu lisibles (chantier non fait) ;
+  - arbustes de la grève sombres à contre-jour ;
+  - galets plus gris que blancs au soleil rasant ;
+  - lagune assez sombre en fin de plan ;
+  - rendu à 16 samples : scintillement du débruitage possible, non vérifié image par image.
+- **Paramètres exacts du rendu** : section 6 (« Animation »), en 720×1280 et 16 samples, puis `encode.py` pour sortir en 1080×1920.
+
+**Pour mélanger avec les vidéos POV** (dossier `pov-minecraft/`, branche `pov-minecraft`) : utiliser `renders/story_v3_1080x1920_sans_audio.mp4` comme plan « monde voxel ».
+Les 150 frames PNG ne sont pas dans le dépôt, mais elles se re-rendent à l'identique avec la commande de la section 6.
+La frame 1 est calée sur la vraie vidéo : un fondu ou un raccord entre `source/pont-cosne_original.mov` et la V3 tombe au même cadrage.
+
+Démarrage rapide pour une session Higgsfield (ancien plan, toujours valable pour aller plus loin que la V3) :
 
 ```
 Lis HANDOFF.md. Connecte Higgsfield (section 4), puis lance la piste A :
@@ -18,6 +76,7 @@ Historique des retours :
 2. V1 (animation pixel-art 2D) → « C'est mauvais, refais »
 3. « Utilise Higgsfield si besoin » (pas d'accès Higgsfield dans la session où V2 a été faite)
 4. V2 (reconstruction 3D voxel, `renders/final_*`) → « on retravaille tout ça avec Higgsfield »
+5. Higgsfield injoignable depuis la session cloud → V3 : vidéo rendue avec le pipeline (travelling, animation, corrections) ; trajectoire C validée sur un aperçu.
 
 ## 2. Contenu
 
@@ -42,7 +101,7 @@ Historique des retours :
   La variante « l » utilisait `sun_col=1.0,0.52,0.28` (plus orangé). Le final a gardé la couleur par défaut parce qu'une clé mal nommée
   avait été ignorée sans prévenir. `scene.py` affiche maintenant un avertissement pour toute clé inconnue.
 
-Limites connues, à améliorer avec Higgsfield :
+Limites connues de la V2 (tablier, herbe, triangles et grève corrigés en V3, voir section 0) :
 - Lumière de fin de journée sous ciel bleu, alors que la vidéo est filmée sous un ciel d'automne couvert : c'est un choix artistique, à garder ou à inverser.
 - Premier plan d'herbe un peu plat et répétitif, avec quelques artefacts : de petits triangles à texture « côté d'herbe » plantés dans la pelouse.
 - Grève du milieu en blocs épars assez bruités. Rive d'en face et arbres lointains peu lisibles.
@@ -125,3 +184,41 @@ py -3.11 -m venv .venv          # ou : uv venv -p 3.11 .venv
   `... scene.py renders/end.png 1080 32 <mêmes params lumière> cam_fwd=12 cam_up=3 cam_pitch=4`
 - Régénérer le monde après avoir modifié `world.py` : `textures.py` → `world.py` → `mesher.py` (tous dans `pipeline\mc\`). Ils produisent `world.npz`.
 - Calibration : `pipeline\geo\fit.py` et `fit_roll.py` produisent `fitP_rollfree.npy`, que lit `scene.py`.
+
+### Animation (travelling avant) et encodage de la story
+
+Avec `anim=1`, `scene.py` rend une séquence. SORTIE devient un motif de fichiers : les `#` prennent le numéro de frame, de 1 à `frames`.
+La frame 1 reprend la composition d'origine. La caméra glisse ensuite jusqu'à la pose de fin (`cam_fwd1`, `cam_right1`, `cam_up1`, `cam_yaw1`, `cam_pitch1`, `zoom1`),
+avec un départ et une arrivée adoucis (`ease=1` ; `ease=0` donne un mouvement linéaire). Le soleil reste fixe dans le monde.
+Les nuages dérivent (`cloud_dx` vers la droite de la vue d'origine, `cloud_dy` vers le fond, en mètres sur toute la durée).
+Les ondulations de l'eau avancent (`w_flow` en m/s ; `w_evol` règle l'évolution sur place). Les herbes ondulent (`sway`, amplitude au sommet en mètres ; `sway_T` et `sway_L`).
+La scène n'est construite qu'une fois (`use_persistent_data`) et la graine du bruit reste fixe.
+
+Rendu de la séquence (trajectoire C recommandée, voir plus bas), puis encodage :
+
+```
+.venv/Scripts/python pipeline/mc/scene.py renders/frames/f_####.png 720 16 sun_az=62 sun_el=4.5 sun_str=18 sky_str=0.10 "sun_col=1.0,0.78,0.56" expo=0.45 anim=1 frames=150 fps=15 cam_fwd1=10 cam_right1=5 cam_yaw1=9 cam_up1=4 cam_pitch1=7 cloud_dx=40 w_flow=0.4 sway=0.08
+.venv/Scripts/python pipeline/encode.py renders/frames/f_####.png renders/story.mp4
+```
+
+Trajectoires testées (même départ, 150 frames, planches de 5 frames en 216×384) :
+
+| | Paramètres de fin | Effet |
+|---|---|---|
+| A | `cam_fwd1=12 cam_up1=3 cam_pitch1=4 cam_yaw1=2` | Travelling avant simple (exemple de la piste C). Le pylône grossit, la pile sort à gauche. |
+| B | `cam_fwd1=16 cam_up1=6 cam_yaw1=3 cam_pitch1=3` | Avant + grue. La caméra passe au-dessus du tablier, qui finit en diagonale au premier plan. |
+| **C** | `cam_fwd1=10 cam_right1=5 cam_yaw1=9 cam_up1=4 cam_pitch1=7` | Arc + grue. Le pylône reste centré, le tablier et les câbles défilent, la 2ᵉ travée et le fleuve se découvrent. |
+
+- Reprise : relancer la même commande. Les frames déjà présentes sont sautées. Chaque frame est écrite en `.part.png`, puis renommée ; une frame interrompue n'est donc jamais prise pour une frame finie.
+  Pour un sous-ensemble, utiliser `frame_start=`, `frame_end=` et `frame_step=` (aperçu rapide). `overwrite=1` refait tout.
+- Planche contact rapide d'une trajectoire : `frames=5` (0, 25, 50, 75 et 100 %) avec `216 8` (216×384, 8 samples).
+- Temps mesurés en 720×1280 avec `threads=2`, pendant qu'un autre rendu à 2 threads tournait (charge ≈ 3,9 sur 4 cœurs) : 64 à 69 s par frame à 16 samples, 87 à 90 s à 24 samples.
+  La construction de la scène prend environ 10 s, une seule fois. Pour 150 frames avec 4 threads sur une machine libre, on peut estimer 1 h 20 à 1 h 40 à 16 samples
+  et 1 h 50 à 2 h 15 à 24 samples. Ces chiffres sont extrapolés, pas mesurés. En 216×384 à 4 samples, une frame prend environ 3 s.
+- En mode anim, les matériaux à brume ne sont plus échantillonnés comme des lumières (`fog_nee=0`). Leur émission n'est vue que par les rayons caméra.
+  L'image est la même en espérance ; seul le bruit change. Sans ce réglage, l'arbre des lumières (des millions de triangles) serait reconstruit à chaque frame, soit 12 à 15 s de plus par frame.
+  `fog_nee=1` rétablit l'échantillonnage exact des images fixes.
+- `encode.py` produit `story.mp4` : H.264 1080×1920, yuv420p BT.709, crf 18, au fps des frames (`--fps`, 15 par défaut), avec mise à l'échelle lanczos.
+  La piste audio vient de `source/pont-cosne_original.mov`, coupée à la durée de la vidéo. Le script produit aussi `story_sans_audio.mp4`.
+  Les métadonnées de la vidéo source, dont la position GPS, ne sont pas recopiées. Si des frames manquent dans la séquence, le script s'arrête et liste celles à rendre.
+  ffmpeg : `--ffmpeg chemin`, sinon celui du PATH, sinon celui du paquet `imageio-ffmpeg` (`pip install imageio-ffmpeg`).

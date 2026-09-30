@@ -4,3 +4,4 @@ numpy>=1.26,<2
 pillow
 opencv-python-headless==4.11.0.86   # mc/world.py
 scipy                               # geo/fit.py uniquement
+imageio-ffmpeg                      # encode.py (ffmpeg statique si absent du PATH)
