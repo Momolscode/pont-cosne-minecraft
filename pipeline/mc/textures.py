@@ -24,31 +24,46 @@ def pal_img(rng,palette,weights,blob=1):
     return np.array(palette,np.uint8)[idx]
 def C(*a): return tuple(int(x) for x in a)
 
-# ---------------- herbe
-G=[C(98,158,56),C(84,140,48),C(112,172,66),C(72,122,42),C(124,182,74)]
+# ---------------- herbe (pelouse d'automne : vert olive, brins secs, terre)
+def lawn(seed,pal,w,dots,nd,blob=2):
+    """dessus d'herbe : palette en taches + brins isolés (1-2 px verticaux) d'autres teintes"""
+    rng=np.random.default_rng(seed); img=pal_img(rng,pal,w,blob=blob).copy()
+    for _ in range(nd):
+        y,x=rng.integers(0,T,2); c=dots[rng.integers(0,len(dots))]
+        img[y,x]=c
+        if rng.random()<0.5: img[(y+1)%T,x]=c
+    return img
+G=[C(94,128,50),C(82,114,44),C(106,140,58),C(72,100,38),C(120,138,62),C(140,136,76)]      # vert olive
+GS=[C(152,140,84),C(134,120,70),C(60,88,32)]                                                # brins secs / sombres
 for i,seed in enumerate([1,2,3]):
-    rng=np.random.default_rng(seed)
-    put(f"grass_top{i}",i,pal_img(rng,G,[5,4,3,2,1],blob=2))
-GD=[C(132,158,70),C(118,142,60),C(146,168,82),C(104,126,52),C(160,160,90)]   # herbe sèche/claire
-put("grass_top_dry",3,pal_img(np.random.default_rng(4),GD,[5,4,3,2,1],blob=2))
+    put(f"grass_top{i}",i,lawn(seed,G,[5,4,3,2,1.4,0.6],GS,10))
+GD=[C(132,124,76),C(116,110,66),C(146,138,90),C(98,94,56),C(98,112,54),C(160,150,104)]    # herbe sèche (paille, olive)
+GDd=[C(92,120,50),C(80,78,48),C(184,170,118)]
+put("grass_top_dry",3,lawn(4,GD,[5,4,3,2.5,2.5,1],GDd,16))
 D=[C(134,96,66),C(116,82,56),C(152,112,78),C(100,71,48),C(166,126,90)]
 def dirt(seed): return pal_img(np.random.default_rng(seed),D,[5,4,3,2,1],blob=1)
 put("dirt",4,dirt(5))
 # côté herbe
 side=dirt(6).copy(); rng=np.random.default_rng(7)
-gtop=pal_img(rng,G,[5,4,3,2,1],blob=1)
+gtop=pal_img(rng,G,[5,4,3,2,1.4,0.6],blob=1)
 depth=np.clip(3+rng.integers(-1,2,T)+ (rng.random(T)<0.25)*rng.integers(1,3,T),2,6)
 for x in range(T): side[:depth[x],x]=gtop[:depth[x],x]
 put("grass_side",5,side)
-# terre grossière
-cd=dirt(8).copy(); rng=np.random.default_rng(9)
+# terre grossière (plaques de terre nue de la pelouse) : brun gris, cailloux, quelques brins secs
+DC=[C(132,110,84),C(118,98,74),C(146,124,96),C(106,88,68),C(156,136,108)]
+cd=pal_img(np.random.default_rng(8),DC,[5,4,3,2,1],blob=1).copy(); rng=np.random.default_rng(9)
 for _ in range(9):
-    y,x=rng.integers(0,T-1,2); col=np.array([C(122,114,104),C(96,90,84),C(140,132,120)][rng.integers(0,3)],np.uint8)
+    y,x=rng.integers(0,T-1,2); col=np.array([C(128,122,112),C(100,96,90),C(150,144,132)][rng.integers(0,3)],np.uint8)
     cd[y:y+2,x:x+rng.integers(1,3)]=col
+for _ in range(6):
+    y,x=rng.integers(0,T,2); cd[y,x]=[C(150,136,82),C(96,118,50)][rng.integers(0,2)]
 put("coarse_dirt",6,cd)
-# chemin (dessus)
-P_=[C(150,122,76),C(136,108,66),C(164,136,88),C(124,98,60)]
-put("path",7,pal_img(np.random.default_rng(10),P_,[5,4,3,2],blob=1))
+# chemin de terre sableux (dessus)
+P_=[C(170,150,114),C(158,138,104),C(182,164,128),C(146,128,96),C(194,178,146)]
+pa=pal_img(np.random.default_rng(10),P_,[5,4,3,2,1.5],blob=1).copy(); rng=np.random.default_rng(35)
+for _ in range(7):
+    y,x=rng.integers(0,T,2); pa[y,x:x+rng.integers(1,3)]=[C(132,120,104),C(118,104,86),C(206,196,172)][rng.integers(0,3)]
+put("path",7,pa)
 # sable
 S=[C(221,208,160),C(208,194,146),C(232,222,178),C(196,180,132),C(240,232,196)]
 put("sand",8,pal_img(np.random.default_rng(11),S,[6,4,3,1,1],blob=1))
@@ -155,26 +170,28 @@ yy,xx=np.mgrid[0:T,0:T]; rr=np.maximum(np.abs(yy-7.5),np.abs(xx-7.5))
 lt[:]=C(160,128,84); lt[(rr.astype(int)%2)==0]=C(140,110,70); lt[rr>6.5]=C(96,76,56)
 put("log_top",27,lt)
 # herbes hautes / fleurs (alpha)
-def plant(seed,cols,n=11,hmin=6,hmax=15):
+def plant(seed,cols,n=11,hmin=6,hmax=15,tip=None):
+    """touffe de brins de 1 px sur des colonnes distinctes, haut incliné (tip : teinte de la pointe)"""
     rng=np.random.default_rng(seed); img=np.zeros((T,T,4),np.uint8)
-    for _ in range(n):
-        x=rng.integers(1,T-1); h=rng.integers(hmin,hmax); lean=rng.choice([-1,0,0,1])
+    for x in rng.choice(np.arange(1,T-1),min(n,T-2),replace=False):
+        h=rng.integers(hmin,hmax); lean=rng.choice([-1,0,0,1]); k0=int(h*rng.uniform(0.5,0.8))
         c=np.array(cols[rng.integers(0,len(cols))]+(255,),np.uint8)
         for k in range(h):
-            y=T-1-k; xx_=x+(lean if k>h*0.6 else 0)
-            if 0<=xx_<T: img[y,xx_]=c
+            y=T-1-k; xx_=x+(lean if k>=k0 else 0)
+            if 0<=xx_<T: img[y,xx_]=np.array(tip+(255,),np.uint8) if (tip and k==h-1) else c
     return img
-put("tallgrass",28,plant(29,[C(92,150,52),C(78,132,44),C(110,166,62),C(70,118,40)]))
-put("drygrass",29,plant(30,[C(170,160,92),C(150,140,78),C(186,176,110),C(132,150,70)],n=9))
+put("tallgrass",28,plant(29,[C(84,140,48),C(70,122,40),C(100,154,58),C(62,106,36),C(112,160,64)],n=11,hmin=6,tip=C(132,170,74)))
+put("drygrass",29,plant(30,[C(166,150,92),C(146,130,78),C(182,166,108),C(128,114,68),C(116,124,62)],n=7,hmin=7,tip=C(112,92,60)))
 def flower(seed,petal,center):
-    img=plant(seed,[C(70,122,42),C(84,138,50)],n=3,hmin=6,hmax=10)
-    rng=np.random.default_rng(seed+100)
-    for _ in range(2):
-        cx,cy=rng.integers(4,12),rng.integers(3,8)
-        for dx,dy in [(0,-1),(0,1),(-1,0),(1,0)]:
-            img[cy+dy,cx+dx]=np.array(petal+(255,),np.uint8)
+    """deux fleurs sur tiges fines, petites feuilles"""
+    rng=np.random.default_rng(seed); img=np.zeros((T,T,4),np.uint8)
+    st=np.array(C(70,122,42)+(255,),np.uint8); lf=np.array(C(90,142,54)+(255,),np.uint8)
+    for cx in (rng.integers(3,7),rng.integers(9,13)):
+        cy=rng.integers(3,8); img[cy+1:T,cx]=st
+        for yl in rng.choice(np.arange(cy+4,T-1),2,replace=False):
+            d=rng.choice([-1,1]); img[yl,cx+d]=lf; img[yl-1,cx+2*d]=lf
+        for dx,dy in [(0,-1),(0,1),(-1,0),(1,0)]: img[cy+dy,cx+dx]=np.array(petal+(255,),np.uint8)
         img[cy,cx]=np.array(center+(255,),np.uint8)
-        img[cy+2:T-1,cx]=np.array(C(70,122,42)+(255,),np.uint8)
     return img
 put("flower_yellow",30,flower(31,C(236,204,48),C(200,140,24)))
 put("flower_white",31,flower(32,C(238,238,228),C(230,190,40)))
@@ -190,6 +207,30 @@ MS=[C(118,122,110),C(104,108,98),C(96,120,72),C(132,134,124)]
 put("mossy_stone",34,pal_img(np.random.default_rng(34),MS,[5,4,2,2],blob=2))
 # Nouvelles tuiles (index réservés : herbe 35-39, grève 40-44, rive 45-49, tablier 50-54)
 # ext:herbe
+put("grass_top_dry1",35,lawn(36,GD,[4,5,2,3,2,1.2],GDd,18))
+TILES["grass_top_dry0"]=TILES["grass_top_dry"]; TILES["grass_top_dry2"]=TILES["grass_top_dry"]   # alias pour "grass_top_dry*"
+# herbe clairsemée : terre visible entre les touffes
+rg=np.random.default_rng(37)
+cov=np.kron(rg.random((8,8)),np.ones((2,2)))*0.75+rg.random((T,T))*0.25>0.36        # trous de terre en paquets de 2 px
+gp=np.where(cov[...,None],lawn(38,GD,[5,4,3,2,1.6,1],GDd,6),pal_img(rg,DC,[5,4,3,2,1],blob=1))
+put("grass_top_patchy",36,gp)
+# touffes basses (contenu sur les 8 px du bas : croix de 0,5 m)
+put("grass_short",37,plant(38,[C(96,130,52),C(84,116,46),C(112,142,60),C(150,140,84),C(134,122,72)],n=10,hmin=3,hmax=9))
+put("grass_short_dry",38,plant(39,[C(172,156,96),C(152,136,80),C(188,172,112),C(130,118,68),C(110,122,58)],n=9,hmin=3,hmax=9))
+# plante feuillue façon fougère (bande verte entre pelouse et grève) : 3 tiges arquées, folioles alternées
+def weeds(seed):
+    rng=np.random.default_rng(seed); img=np.zeros((T,T,4),np.uint8)
+    L=[C(60,108,40),C(76,128,48),C(92,144,56),C(108,158,64)]
+    for x0,dx,h in ((7,0,rng.integers(13,16)),(6,-1,rng.integers(9,12)),(9,1,rng.integers(9,12))):
+        for k in range(h):
+            y=T-1-k; x=x0+int(round(dx*(k/h)**1.4*4)); img[y,x]=L[0]+(255,)
+            if k>=3 and (k+dx)%2==0:
+                sd=1 if (k//2)%2 else -1
+                for q in (1,2):
+                    xx=x+sd*q; yy=y-(q-1)
+                    if 0<=xx<T and k<h-1: img[yy,xx]=L[rng.integers(1,4)]+(255,)
+    return img
+put("weeds",39,weeds(40))
 # ext:greve
 # galets calcaire (grève) : gros cailloux arrondis blanchâtres, ombrés, sur joints gris-beige ; tuile raccordable
 def pebbles(seed):

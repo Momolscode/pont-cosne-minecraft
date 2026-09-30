@@ -11,6 +11,7 @@ AIR,GRASS,DIRT,COARSE,SAND,GRAVEL,STONE,BRICKS,BRICKS_M,CAP,PINK,PINK_L,STEEL,ST
 LEAVES={LV_G,LV_Y,LV_O,LV_B,LV_L}
 # Nouveaux blocs (identifiants réservés, à déclarer aussi dans mesher.py) : herbe 30-34, grève 35-39, rive 40-44, tablier 45-49
 # ext:herbe
+GRASS_PATCHY=30
 # ext:greve
 PEBBLES=35
 TUFT=36
@@ -62,13 +63,28 @@ butte=beach&(((wl-SS)<np.where(t_>9,4.6,5.5)+2.2*nb5+0.8*nb6)|near_sh)&(n4>-0.5)
 s_fg=np.clip(-25.3+0.75*t_,-30.5,-21.0)+0.8*n1                    # limite talus vert / galets
 bt=np.where(butte,TUFT,np.where(SS<s_fg,GRASS,PEBBLES))
 top=np.where(beach,bt,top)
-# plateau : herbe + taches de terre grossière / chemin (comme la photo)
-plateau=land_near&(Hbank>=4)
-top=np.where(plateau&(n4>0.55),COARSE,top)
-top=np.where(plateau&(n2<-0.62)&(n4<0),COARSE,top)
-# bande de sable au bas à droite (zone claire de la photo)
-sandy=(SS>-46.5)&(SS<-44)&(TT<14.5)&(TT>11)
-top=np.where(land_near&sandy,np.where(n4>0.0,PATH,COARSE),top)
+# marches de la pelouse : bords rectilignes dans la zone filmée (t de -12 à 30). Avec le bruit de bank_edge,
+# chaque décroché d'un bloc tourné vers la caméra (+t) laissait voir, en vue rasante, un triangle de grass_side
+# éclairé par le soleil, planté dans la pelouse (la marche elle-même, herbe sur herbe, reste invisible).
+jA,jB=ti(-12),ti(30); lw=land_near[:,jA:jB]&(H[:,jA:jB]>=2)
+H[:,jA:jB]=np.where(lw,np.where(lw,H[:,jA:jB],-9).max(1,keepdims=True),H[:,jA:jB])
+# plateau : pelouse d'automne. Zones sèches / vertes (bruit lent) mêlées bloc à bloc, herbe clairsemée,
+# plaques de terre ; chemin de terre sableux en travers du bas de l'image
+plateau=land_near&(H>=4)
+rh=np.random.default_rng(3030)                                   # aléa propre (ne décale pas rng des arbres)
+ndry=vnoise(10,31)+0.5*vnoise(4,32); nbare=vnoise(5,33)+0.4*vnoise(2,34)
+Pc=np.load("../geo/fitP_rollfree.npy"); fh=np.array([math.cos(Pc[3]),math.sin(Pc[3])])   # caméra de la photo
+df=(SS-Pc[0])*fh[0]+(TT-Pc[1])*fh[1]; dr=(SS-Pc[0])*fh[1]-(TT-Pc[1])*fh[0]         # devant / à droite (m)
+dry=(0.8*ndry+0.4*np.clip((9-df)/5,-1,1)+0.25*(rh.random(H.shape)-0.5)>0.2)^(rh.random(H.shape)<0.15)  # plus sec près du chemin
+lawn_t=np.where(dry,GRASS_DRY,GRASS)
+lawn_t=np.where((nbare>0.5)|(rh.random(H.shape)<0.03),GRASS_PATCHY,lawn_t)
+lawn_t=np.where((nbare>0.72)|(rh.random(H.shape)<0.01),COARSE,lawn_t)
+pe=4.8+0.12*dr+0.45*vnoise(3,35)                                  # bord haut du chemin
+path=(df<pe)&(df>-10)&(np.abs(dr)<30)
+lawn_t=np.where(path,np.where(rh.random(H.shape)<0.04,COARSE,PATH),lawn_t)
+rim=(~path)&(df<pe+0.5)&(rh.random(H.shape)<0.3)                # lisière : herbe clairsemée, terre
+lawn_t=np.where(rim,np.where(rh.random(H.shape)<0.15,COARSE,GRASS_PATCHY),lawn_t)
+top=np.where(plateau,lawn_t,top)
 # eau peu profonde le long de la plage
 shore=(~land_near)&(SS<wl+6)
 H=np.where(shore&(H<-1),-1.0,H)
