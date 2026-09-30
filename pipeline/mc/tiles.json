@@ -33,5 +33,10 @@
 "flower_white": 31,
 "cable": 32,
 "riverbed": 33,
-"mossy_stone": 34
+"mossy_stone": 34,
+"pebbles0": 40,
+"pebbles1": 41,
+"pebbles2": 42,
+"tuft_top": 43,
+"tuft_side": 44
 }
