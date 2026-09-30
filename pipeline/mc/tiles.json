@@ -34,6 +34,11 @@
 "cable": 32,
 "riverbed": 33,
 "mossy_stone": 34,
+"pebbles0": 40,
+"pebbles1": 41,
+"pebbles2": 42,
+"tuft_top": 43,
+"tuft_side": 44,
 "truss_a": 50,
 "truss_b": 51,
 "truss_c": 52

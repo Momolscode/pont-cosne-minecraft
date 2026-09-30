@@ -12,6 +12,9 @@ LEAVES={LV_G,LV_Y,LV_O,LV_B,LV_L}
 # Nouveaux blocs (identifiants réservés, à déclarer aussi dans mesher.py) : herbe 30-34, grève 35-39, rive 40-44, tablier 45-49
 # ext:herbe
 # ext:greve
+PEBBLES=35
+TUFT=36
+TALUS=37
 # ext:rive
 # ext:tablier
 def zi(z): return int(z)-Z0
@@ -39,18 +42,25 @@ bank_edge=-44.0+1.2*n2+0.8*n4
 u=SS-bank_edge
 steps=np.clip(np.floor((u+1.0)/4.2),0,3)
 Hbank=4-steps
-# ligne d'eau (côté gauche : l'eau arrive au pied du talus, devant la pile : plage)
+# ligne d'eau (bord du fleuve : pile les pieds dans l'eau, grève en biais à droite ; lagune à gauche)
 t_=TT
-wl=np.where(t_>12,-26.0+1.5*n2,np.where(t_>-10,-2.5,-9.5+1.5*n2))
-blend=sm(4,12,t_)                      # transition douce plage -> talus
-wl=np.where((t_>4)&(t_<=12),-2.5*(1-blend)+(-26.0)*blend,wl)
-wl=np.where((t_<=-10)&(t_>-14),-2.5+( -9.5+2.5)*sm(-10,-14,t_),wl)
-land_near=SS<wl
-H=np.where(land_near,Hbank,H)
+wl=np.where(t_>9,-4.0-0.12*(t_-9)-0.6*np.clip(t_-30,0,None),np.where(t_>-9,-3.5,np.maximum(-24.0,-3.5+1.25*(t_+9))))+0.7*n1   # langue effilée vers t=36
+s_in=np.minimum(-9.5,-15.3+0.6*(t_-9.3))+0.6*n1                 # bord intérieur de la langue de grève
+s_nr=np.where(t_>=10,-25.8,-25.8+2.3*(10-t_))+0.6*n1              # bord du talus côté lagune
+lagoon=(t_>5)&(SS>s_nr)&(SS<s_in)                                 # eau peu profonde (reflets de la pile)
+Hb=np.where(Hbank<=3,4-np.clip(np.floor((SS+44.0-1.2*n3+1.0)/4.2),1,3),Hbank)   # marches du talus lissées (bord du plateau inchangé)
+land_near=(SS<wl)&~lagoon
+H=np.where(land_near,Hb,H)
 top=np.where(land_near,GRASS,top)
-# plage basse (z=1) : gravier / herbe / sable selon bruit
-beach=land_near&(Hbank<=1)
-bt=np.where(n4>0.15,GRAVEL,np.where(n2>0.25,GRASS,np.where(n4<-0.45,SAND,np.where(n2<-0.3,COARSE,GRAVEL))))
+# plage basse en bandes : talus vert (z=1), galets calcaire au ras de l'eau, buttes d'herbe (1 bloc) le long du fleuve
+beach=land_near&(Hb<=1)
+nb5=vnoise(3,35); nb6=vnoise(9,36)
+SHRUBS=[(-6,0,2.5,2.3),(-13,-10,2.1,2.0)]                          # arbustes de la photo : (s,t,rayon,demi-hauteur)
+near_sh=np.zeros_like(beach)
+for (s_,t_s,r_,h_) in SHRUBS: near_sh|=((SS-s_-0.5)**2+(TT-t_s-0.5)**2)<(r_+1.6)**2
+butte=beach&(((wl-SS)<np.where(t_>9,4.6,5.5)+2.2*nb5+0.8*nb6)|near_sh)&(n4>-0.5)   # touffes groupées, bord festonné
+s_fg=np.clip(-25.3+0.75*t_,-30.5,-21.0)+0.8*n1                    # limite talus vert / galets
+bt=np.where(butte,TUFT,np.where(SS<s_fg,GRASS,PEBBLES))
 top=np.where(beach,bt,top)
 # plateau : herbe + taches de terre grossière / chemin (comme la photo)
 plateau=land_near&(Hbank>=4)
@@ -62,6 +72,11 @@ top=np.where(land_near&sandy,np.where(n4>0.0,PATH,COARSE),top)
 # eau peu profonde le long de la plage
 shore=(~land_near)&(SS<wl+6)
 H=np.where(shore&(H<-1),-1.0,H)
+H=np.where(beach&(bt!=GRASS),np.where(butte,1.0,0.0),H)           # galets au ras de l'eau, buttes un bloc au-dessus
+# bord des marches du talus : côté en brins d'herbe plutôt qu'en terre (triangles roses au soleil rasant)
+lower=np.zeros_like(beach)
+for d in [(1,0),(-1,0),(0,1),(0,-1)]: lower|=np.roll(H,d,(0,1))<H
+top=np.where(land_near&(Hbank<=3)&(top==GRASS)&lower,TALUS,top)
 
 # île boisée (droite) : rive proche vers s=20, pointe vers (30,-28)
 isl=((SS-85)/68)**2+((TT+120)/92)**2 + 0.10*n1
@@ -107,6 +122,9 @@ nb=np.zeros_like(edge)
 for d in [(1,0),(-1,0),(0,1),(0,-1)]:
     nb|=np.roll(H<=0,d,(0,1))
 vox[:,:,k1]=np.where(edge&nb&(top==SAND),SAND_WET,vox[:,:,k1])
+# sous les galets et les buttes : galets (pas de terre au ras de l'eau)
+for z in (-1,0):
+    vox[:,:,zi(z)]=np.where(land_near&np.isin(top,[PEBBLES,TUFT])&(vox[:,:,zi(z)]==DIRT),PEBBLES,vox[:,:,zi(z)])
 
 def setbox(s0,s1,t0,t1,z0,z1,b):
     vox[si(s0):si(s1),ti(t0):ti(t1),zi(z0):zi(z1)]=b
@@ -193,15 +211,15 @@ scatter(island&(H>=2)&(isl<0.95),5,lambda s,t,z: tree(int(s),int(t),z,"poplar" i
 # rive lointaine : forêt dense
 scatter(far&(H>=3),5,lambda s,t,z: tree(int(s),int(t),z,"oak" if rng.random()<0.6 else "poplar",leaf_kind(0.25,0.1)))
 scatter(farR&(H>=3),6,lambda s,t,z: tree(int(s),int(t),z,"oak" if rng.random()<0.5 else "poplar",leaf_kind()))
-# buissons sur la plage basse et en pied de talus
-bmask=land_near&(H==1)&(SS>-30)&(SS>wl-3.5)&(n2>-0.1)
-scatter(bmask,7,lambda s,t,z: tree(int(s),int(t),z,"bush",LV_B))
-bmask2=land_near&(H==2)&(n2>0.2)&(TT<12)
-scatter(bmask2,11,lambda s,t,z: tree(int(s),int(t),z,"bush",LV_B))
-# rochers sur la plage
-rk=land_near&(H==1)&(rng.random(H.shape)<0.035)
-for i,j in np.argwhere(rk):
-    k=H[i,j]-Z0
-    if vox[i,j,k]==AIR: vox[i,j,k]=MOSSY if rng.random()<0.5 else STONE
+# arbustes de la grève (deux, placés comme sur la photo) : boule de feuillage irrégulière posée sur les buttes
+for (s_,t_s,r_,h_) in SHRUBS:
+    r2=np.random.default_rng(int(s_*31+t_s)&0xffff); z0=int(H[si(s_),ti(t_s)])-1
+    for ds in range(-3,4):
+        for dt in range(-3,4):
+            rr=r_*(0.8+0.35*r2.random())                              # contour irrégulier
+            for dz in range(0,int(2*h_)+3):
+                d=(ds/rr)**2+(dt/rr)**2+((dz-h_+0.3)/h_)**2
+                if (d<=1.1 or (d<=1.6 and r2.random()<0.15)) and r2.random()>0.2 and vox[si(s_+ds),ti(t_s+dt),zi(z0+dz)]==AIR:
+                    vox[si(s_+ds),ti(t_s+dt),zi(z0+dz)]=LV_B
 np.save("vox.npy",vox); np.save("H.npy",H)
 print("voxels:",{n:int((vox==v).sum()) for n,v in [("water",WATER),("leaves",-1)] if v>=0}, "solid",int(((vox!=AIR)&(vox!=WATER)).sum()))

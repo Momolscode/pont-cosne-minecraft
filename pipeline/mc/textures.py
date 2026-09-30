@@ -142,7 +142,7 @@ def leaves(seed,pal,hole=0.14):
 put("leaves_green",21,leaves(23,[C(74,128,46),C(62,110,40),C(90,146,58),C(54,96,34)]))
 put("leaves_yellow",22,leaves(24,[C(196,176,64),C(176,156,52),C(214,194,86),C(160,146,50)]))
 put("leaves_orange",23,leaves(25,[C(206,126,52),C(186,104,40),C(222,150,72),C(170,92,36)]))
-put("leaves_bush",24,leaves(26,[C(58,104,42),C(48,88,34),C(70,120,50),C(40,76,30)],hole=0.08))
+put("leaves_bush",24,leaves(26,[C(120,148,90),C(102,130,76),C(140,164,104),C(88,114,64)],hole=0.24))   # arbustes de grève gris-vert
 put("leaves_light",25,leaves(27,[C(120,164,70),C(104,146,60),C(136,178,84),C(94,132,54)]))
 # bûche
 lg=np.zeros((T,T,3),np.uint8); rng=np.random.default_rng(28)
@@ -191,6 +191,37 @@ put("mossy_stone",34,pal_img(np.random.default_rng(34),MS,[5,4,2,2],blob=2))
 # Nouvelles tuiles (index réservés : herbe 35-39, grève 40-44, rive 45-49, tablier 50-54)
 # ext:herbe
 # ext:greve
+# galets calcaire (grève) : gros cailloux arrondis blanchâtres, ombrés, sur joints gris-beige ; tuile raccordable
+def pebbles(seed):
+    rng=np.random.default_rng(seed)
+    img=pal_img(rng,[C(164,156,142),C(152,144,130),C(174,166,152),C(138,130,118)],[5,4,3,2],blob=1).astype(int)
+    PB=[C(232,230,222),C(218,216,208),C(242,240,234),C(204,202,194),C(224,218,204),C(194,192,186)]
+    yy,xx=np.mgrid[0:T,0:T]
+    for _ in range(13):
+        cy_,cx_=rng.uniform(0,T,2); ry,rx=rng.uniform(1.4,2.3),rng.uniform(1.8,3.0)
+        dy=(yy-cy_+T/2)%T-T/2; dx=(xx-cx_+T/2)%T-T/2          # distance torique
+        m=(dy/ry)**2+(dx/rx)**2<=1.0
+        c=np.array(PB[rng.integers(0,len(PB))])
+        img[m]=c+rng.integers(-4,5,(m.sum(),1))
+        img[m&((dy/ry+dx/rx)<-0.9)]+=10                          # reflet haut-gauche
+        img[m&((dy/ry+dx/rx)>0.95)]-=30                          # ombre bas-droite
+    return np.clip(img,0,255).astype(np.uint8)
+for i in range(3): put(f"pebbles{i}",40+i,pebbles(40+i))
+# buttes d'herbe drue : dessus en touffes sombres, côté en brins de hauteurs variées (base sombre, pointes claires)
+TG=[C(84,138,52),C(72,124,46),C(100,156,62),C(64,110,40),C(118,168,72)]
+tt_=pal_img(np.random.default_rng(43),[C(70,118,44),C(60,104,38),C(84,134,52),C(52,92,34)],[5,4,3,2],blob=2).astype(int); rg=np.random.default_rng(44)
+for _ in range(16):                                              # touffes : petit éclat clair + creux sombre
+    y,x=rg.integers(0,T,2); c=np.array([C(112,166,70),C(128,176,80),C(146,166,86)][rg.integers(0,3)])
+    tt_[y,x]=c; tt_[y,(x+1)%T]=c*0.9; tt_[(y+1)%T,x]=(c*0.55).astype(int)
+put("tuft_top",43,np.clip(tt_,0,255).astype(np.uint8))
+ts_=pal_img(np.random.default_rng(45),[C(52,90,36),C(60,100,40),C(46,80,32)],[3,2,2],blob=1).astype(int); rg=np.random.default_rng(46)
+for _ in range(15):                                              # brins : du bas vers le haut, légère courbure
+    x=rg.integers(0,T); h=rg.integers(7,17); lean=rg.choice([-1,0,1]); c=np.array(TG[rg.integers(0,len(TG))])
+    for k in range(h):
+        y=T-1-k; xx_=(x+(lean if k>h*0.55 else 0))%T; f=0.72+0.45*k/h
+        ts_[y,xx_]=np.clip(c*f,0,255).astype(int)
+    if rg.random()<0.2: ts_[T-h:T-h+2,x]=C(152,150,86)          # pointe sèche
+put("tuft_side",44,np.clip(ts_,0,255).astype(np.uint8))
 # ext:rive
 # ext:tablier
 # panneau de poutre latérale 2 m x 1,5 m (32x24 px, alpha) : croisillon en X, gousset en losange,

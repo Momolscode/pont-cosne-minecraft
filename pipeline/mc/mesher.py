@@ -28,6 +28,12 @@ FT={ # top, side, bottom
 # Nouveaux blocs, un bloc de lignes par zone (identifiants réservés : herbe 30-34, grève 35-39, rive 40-44, tablier 45-49)
 # ext:herbe
 # ext:greve
+PEBBLES=35
+TUFT=36
+TALUS=37
+FT[PEBBLES]=("pebbles*",)*3
+FT[TUFT]=("tuft_top","tuft_side","pebbles0")
+FT[TALUS]=("grass_top*","tuft_side","dirt")
 # ext:rive
 # ext:tablier
 NB=64
