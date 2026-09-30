@@ -33,5 +33,8 @@
 "flower_white": 31,
 "cable": 32,
 "riverbed": 33,
-"mossy_stone": 34
+"mossy_stone": 34,
+"truss_a": 50,
+"truss_b": 51,
+"truss_c": 52
 }

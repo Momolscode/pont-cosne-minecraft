@@ -144,6 +144,17 @@ def mat_cloud():
     return m
 MATS={"opaque":mat_blocks("blocks"),"cutout":mat_blocks("cutout",True),"water":mat_water(),"cloud":mat_cloud()}
 MATS["plants"]=MATS["cutout"]
+def mat_steel(name,cutout=False):
+    """acier du tablier : quasi mat (le reflet du soleil rasant sur les faces côté caméra, qui renvoient
+    presque exactement vers l'objectif, les blanchissait) ; treillis sans translucidité"""
+    m=mat_blocks(name,cutout)
+    for n in m.node_tree.nodes:
+        if n.type=='BSDF_PRINCIPLED':
+            n.inputs["Roughness"].default_value=0.9; n.inputs["Specular IOR Level"].default_value=0.05
+        if n.type=='MIX_SHADER' and any(l.from_node.type=='BSDF_TRANSLUCENT' for l in n.inputs[2].links):
+            n.inputs[0].default_value=0.0
+    return m
+MATS["steel"]=mat_steel("steel"); MATS["truss"]=mat_steel("truss",True)
 
 # ---------------- maillages (foreach_set)
 def make_mesh(name,V,U,mat):
@@ -159,6 +170,8 @@ def make_mesh(name,V,U,mat):
     return ob
 t0=time.time()
 for k in ("opaque","cutout","water","cloud","plants"):
+    if "V_"+k in W.files: make_mesh(k,W["V_"+k],W["U_"+k],MATS[k])
+for k in ("steel","truss"):     # tablier (mesher.py)
     if "V_"+k in W.files: make_mesh(k,W["V_"+k],W["U_"+k],MATS[k])
 print("meshes built",round(time.time()-t0,1),"s")
 # plan d'eau lointain (hors monde voxel) et terre lointaine
