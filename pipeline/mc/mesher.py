@@ -111,21 +111,36 @@ def box(QQ,x0,x1,y0,y1,z0,z1,tt_,ts,tb):
 DECK_S0,DECK_S1=-75.0,345.0
 L=DECK_S1-DECK_S0
 st=Tn("steel"); sd=Tn("steel_dark"); asp=Tn("asphalt"); lat=Tn("lattice"); cab=Tn("cable")
-# tablier : chaussée + membrures + treillis + pièces de pont
+QS,QT=Q(),Q()     # acier du tablier, matériau mat dédié (scene.py) : pleins / treillis découpé
+def quad_uv(QQ,o,eu,ev,tile,v0=0.0,v1=1.0,flip=False):
+    """un quad o+eu*a+ev*b (a,b in [0,1]) -> tuile entière, ou bande [v0,v1] de la tuile ; flip = miroir en u"""
+    o=np.array(o,np.float32); eu=np.array(eu,np.float32); ev=np.array(ev,np.float32)
+    V=[o,o+eu,o+eu+ev,o+ev]
+    uu=np.array([1,0,0,1.]) if flip else np.array([0,1,1,0.])
+    vv=np.clip(np.array([v0,v0,v1,v1]),v0+EPS,v1-EPS)
+    u,v=tile_uv(tile,uu,vv); QQ.add(np.array([V]),np.stack([u,v],-1)[None])
+# tablier : poutres latérales hautes (membrure basse 9,5-10, panneaux en X 10-11,5, membrure haute 11,5-12)
+ZB,ZP,ZT=9.5,10.0,11.5
 for s0 in np.arange(DECK_S0,DECK_S1,20.0):
     s1=min(s0+20,DECK_S1)
-    box(QO,s0,s1,-3,3,9.5,10,asp,sd,sd)                     # chaussée
-    for tc in (3,-4):                                        # membrures basse/haute (t in [3,4] et [-4,-3])
-        box(QO,s0,s1,tc,tc+1,9.5,10.5,st,st,sd)
-        box(QO,s0,s1,tc,tc+1,11.5,12.0,st,st,sd)
-    for tp in (3.5,-3.5):                                    # treillis (plan alpha)
-        face_grid(QC,(s0,tp,10.5),(1,0,0),(0,0,1),s1-s0,1.0,lat)
-for s in np.arange(DECK_S0,DECK_S1,2.0):                     # pièces de pont
-    box(QO,s,s+0.5,-4,4,9.0,9.5,sd,sd,sd)
-    # poteaux verticaux du treillis tous les 4 m
-    if int(s)%4==0:
-        for tc in (3.25,-3.75):
-            box(QO,s,s+0.5,tc,tc+0.5,10.5,11.5,st,st,st)
+    box(QS,s0,s1,-3.5,3.5,9.5,10,asp,sd,sd)                 # chaussée (dessous acier sombre)
+    for ta in (3.5,-4.0):                                    # membrures des deux poutres (t in [3.5,4] et [-4,-3.5])
+        box(QS,s0,s1,ta,ta+0.5,ZB,ZP,st,st,sd)
+        box(QS,s0,s1,ta,ta+0.5,ZT,ZT+0.5,st,st,sd)
+tA,tB,tC=Tn("truss_a"),Tn("truss_b"),Tn("truss_c")
+for s in np.arange(DECK_S0,DECK_S1,2.0):
+    for tp in (3.75,-3.75):                                  # panneau 2 m x 1,5 m : croisillon + gousset en losange
+        # vu depuis +t (caméra) : +s part vers la gauche, d'où le miroir (arête éclairée du gousset côté soleil)
+        quad_uv(QT,(s,tp,ZP+0.5),(1,0,0),(0,0,1),tB,flip=True); quad_uv(QT,(s+1,tp,ZP+0.5),(1,0,0),(0,0,1),tA,flip=True)
+        quad_uv(QT,(s,tp,ZP),(1,0,0),(0,0,0.5),tC,0.0,0.5,True); quad_uv(QT,(s+1,tp,ZP),(1,0,0),(0,0,0.5),tC,0.5,1.0,True)
+    box(QS,s-0.25,s+0.25,-3.5,3.5,9.25,9.5,sd,sd,sd)         # pièces de pont minces (leurs abouts prennent le soleil rasant)
+# passerelle de visite en treillis devant chaque pile, pendue sous le tablier (photo : côté caméra de la pile)
+for sc in (0.0,260.0):
+    sp=sc-2.4
+    for k,t in enumerate(np.arange(-8.0,4.0,1.5)):
+        quad_uv(QT,(sp,t,7.5),(0,1.5,0),(0,0,1.5),lat,flip=bool(k%2))
+    for t,zt in ((-8.0,9.0),(4.0,9.5)):                      # montants : vers le chaperon de la pile / sous la membrure
+        box(QS,sp-0.1,sp+0.1,t-0.1,t+0.1,7.5,zt,st,st,st)
 # câbles porteurs (segments de 0.5 m, hauteur quantifiée au 1/16)
 def cable_z(s):
     if s<0:   return 30.35+0.45*s+0.0011*s*s
@@ -197,5 +212,7 @@ for i,j in np.argwhere(cm):
     QK.add(np.array(Vs),np.zeros((len(Vs),4,2)))
 out={}
 for name,QQ in (("opaque",QO),("cutout",QC),("water",QW),("cloud",QK),("plants",QP)):
+    V,U=QQ.arr(); out["V_"+name]=V; out["U_"+name]=U; print(name,len(V),"quads")
+for name,QQ in (("steel",QS),("truss",QT)):   # tablier : acier mat (matériaux dédiés dans scene.py)
     V,U=QQ.arr(); out["V_"+name]=V; out["U_"+name]=U; print(name,len(V),"quads")
 np.savez_compressed("world.npz",**out)

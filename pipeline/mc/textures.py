@@ -105,30 +105,30 @@ def pink(seed,light=False):
         y0=rng.integers(0,8); img[y0:y0+rng.integers(4,10),x]-=10
     return np.clip(img,0,255).astype(np.uint8)
 put("pink",15,pink(18)); put("pink_light",16,pink(19,True))
-# acier
+# acier du tablier : gris bleuté volontairement sombre. Les faces verticales côté caméra reçoivent
+# le soleil rasant (N.L 0,56 contre 0,08 pour le sol) : un albédo clair y sortait presque blanc.
 def steel(seed,dark=False):
     rng=np.random.default_rng(seed)
-    if dark: base=[C(70,80,94),C(62,71,84),C(78,89,104)]
-    else:    base=[C(122,138,156),C(112,127,145),C(132,148,166),C(104,118,136)]
+    if dark: base=[C(38,44,56),C(34,40,51),C(43,50,63)]
+    else:    base=[C(57,66,86),C(53,61,80),C(62,72,92),C(49,57,74)]
     img=pal_img(rng,base,[5,4,3,2][:len(base)],blob=2).astype(int)
-    edge=-26 if not dark else -14
-    img[0,:]+=12; img[:,0]+=8; img[-1,:]+=edge; img[:,-1]+=edge
-    if not dark:
-        for (y,x) in [(2,2),(2,13),(13,2),(13,13),(2,7),(13,7)]:
-            img[y,x]+=34; img[y+1,x+1]-=20
+    for y0 in (0,8):   # deux plats de 0,5 m par tuile (une membrure montre une moitié) : arêtes + rivets
+        img[y0,:]+=9; img[y0+7,:]-=9
+        if not dark:
+            for x in range(1,T,4): img[y0+3,x]+=20; img[y0+4,x]-=8
+    img[:,0]+=5; img[:,-1]-=8
     return np.clip(img,0,255).astype(np.uint8)
 put("steel",17,steel(20)); put("steel_dark",18,steel(21,True))
 AS=[C(64,66,70),C(56,58,62),C(74,76,80),C(50,52,56)]
 put("asphalt",19,pal_img(np.random.default_rng(22),AS,[5,4,2,2],blob=1))
-# treillis (alpha) : poteau + X
+# treillis (alpha) de la passerelle de pile : membrures, montants, diagonale (panneau en N) ;
+# plus clair que le tablier car sa face côté caméra est toujours à l'ombre
+GM=np.array(C(104,118,138)+(255,),np.uint8); GH=np.array(C(124,138,158)+(255,),np.uint8); GK=np.array(C(78,90,108)+(255,),np.uint8)
 lat=np.zeros((T,T,4),np.uint8)
-col=np.array(C(118,134,152)+(255,),np.uint8); dk=np.array(C(86,99,116)+(255,),np.uint8); hl=np.array(C(150,166,184)+(255,),np.uint8)
-for i in range(T):
-    for d in (0,1):
-        for (x,y) in [(i,i+d),(T-1-i,i+d)]:
-            if 0<=y<T: lat[y,x]=col if d==0 else dk
-lat[:,0:2]=col; lat[:,0]=hl
-lat[7:9,6:10]=hl      # gousset central
+lat[0:2,:]=GM; lat[0,:]=GH; lat[14:16,:]=GM; lat[15,:]=GK
+lat[:,0]=GH; lat[:,15]=GM          # montant partagé avec le panneau voisin (1 px de chaque côté)
+for x in range(1,T-1):
+    y=int(round(13-(x-1)*11/13)); lat[y,x]=GH; lat[min(y+1,13),x]=GM
 put("lattice",20,lat)
 # feuilles (alpha)
 def leaves(seed,pal,hole=0.14):
@@ -193,6 +193,29 @@ put("mossy_stone",34,pal_img(np.random.default_rng(34),MS,[5,4,2,2],blob=2))
 # ext:greve
 # ext:rive
 # ext:tablier
+# panneau de poutre latérale 2 m x 1,5 m (32x24 px, alpha) : croisillon en X, gousset en losange,
+# montant sous le gousset, goussets d'angle. Découpé en 3 tuiles : haut gauche, haut droite, bas (2 demi-tuiles)
+SM=np.array(C(56,65,85)+(255,),np.uint8); SH=np.array(C(63,73,94)+(255,),np.uint8); SK=np.array(C(36,42,55)+(255,),np.uint8)
+PH,PW=24,32
+pan=np.zeros((PH,PW,4),np.uint8)
+for x in range(PW):                                  # diagonales en escalier, 2 px
+    for xx in (x,PW-1-x):
+        y=int(x*(PH-1)/(PW-1)+0.5)
+        pan[y,xx]=SH
+        if y+1<PH: pan[y+1,xx]=SM
+pan[15:PH,15:17]=SM; pan[15:PH,15]=SH                # montant vertical
+yy,xx=np.mgrid[0:PH,0:PW]
+for (cx,cy) in ((0,0),(PW,0),(0,PH),(PW,PH)):       # goussets d'angle (se rejoignent d'un panneau à l'autre)
+    tri=np.abs(xx+0.5-cx)+np.abs(yy+0.5-cy)*1.2<5
+    pan[tri]=SM
+dia=np.abs(xx-15.5)/7.5+np.abs(yy-11.5)/6.0          # gousset central en losange
+GP=np.array(C(66,77,98)+(255,),np.uint8)
+pan[dia<=1.0]=SK; pan[dia<=0.8]=GP
+pan[(dia<=0.8)&((yy-11.5)/6.0+(xx-15.5)/7.5<0)&(dia>0.6)]=np.array(C(75,87,109)+(255,),np.uint8)   # arête éclairée
+for (ry,rx) in ((11,15),(11,10),(11,21),(8,15),(15,15)):
+    pan[ry,rx]=np.array(C(88,100,122)+(255,),np.uint8); pan[ry+1,rx]=SK   # rivets
+put("truss_a",50,pan[0:16,0:16]); put("truss_b",51,pan[0:16,16:32])
+put("truss_c",52,np.concatenate([pan[16:24,0:16],pan[16:24,16:32]],0))
 Image.fromarray(atlas,"RGBA").save("atlas.png")
 import json; json.dump(TILES,open("tiles.json","w"),indent=0)
 # aperçu agrandi
