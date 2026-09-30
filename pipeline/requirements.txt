@@ -1,0 +1,6 @@
+# Python 3.11 obligatoire (bpy 5.0 = Blender en module Python, wheels cp311 uniquement)
+bpy==5.0.1
+numpy>=1.26,<2
+pillow
+opencv-python-headless==4.11.0.86   # mc/world.py
+scipy                               # geo/fit.py uniquement
