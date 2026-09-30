@@ -248,7 +248,7 @@ put("weeds",39,weeds(40))
 # galets calcaire (grève) : gros cailloux (3-5 px) blancs, contrastés, sur joints brun-gris sombres ; tuile raccordable
 def pebbles(seed,n_st=14):
     rng=np.random.default_rng(seed)
-    img=pal_img(rng,[C(122,102,78),C(112,94,72),C(130,110,84),C(106,88,68)],[5,4,3,2],blob=1).astype(int)   # joints brun chaud
+    img=pal_img(rng,[C(130,110,84),C(124,104,80),C(136,116,88),C(118,100,76)],[5,4,3,2],blob=2).astype(int)   # joints brun chaud (taches de 2 px : moins de scintillement)
     PB=[C(244,230,202),C(238,220,188),C(246,236,212),C(236,212,176),C(240,222,190),C(230,206,170)]   # crème et ocre clair
     yy,xx=np.mgrid[0:T,0:T]; placed=np.zeros((T,T),bool); n=0
     for _ in range(300):
@@ -260,11 +260,11 @@ def pebbles(seed,n_st=14):
         n+=1
         ring=np.zeros((T,T),bool)                                 # liseré de joint autour du galet (sépare les galets voisins)
         for sy,sx in ((1,0),(-1,0),(0,1),(0,-1)): ring|=np.roll(m,(sy,sx),(0,1))
-        ring&=~m; img[ring&placed]=np.array(C(104,96,86))+rng.integers(-6,7,(int((ring&placed).sum()),1)); placed|=m
+        ring&=~m; img[ring&placed]=np.array(C(124,104,80)); placed|=m
         c=np.array(PB[rng.integers(0,len(PB))])
-        img[m]=c+rng.integers(-5,6,(m.sum(),1))
+        img[m]=c+rng.integers(-2,3,(m.sum(),1))
         img[m&((dy/ry+dx/rx)<-0.9)]+=6                           # reflet haut-gauche
-        img[m&((dy/ry+dx/rx)>1.05)]-=40                          # ombre bas-droite marquée
+        img[m&((dy/ry+dx/rx)>1.05)]-=22                          # ombre bas-droite
     for _ in range(8):                                          # gravillons dans les joints
         y,x=rng.integers(0,T,2)
         if not placed[y,x]: img[y,x]=C(176,168,152)
