@@ -16,6 +16,7 @@ GRASS_PATCHY=30
 PEBBLES=35
 TUFT=36
 TALUS=37
+PEB_GRASS=55                      # v3.1 : galets mêlés d'herbe (bande buttes / galets)
 # ext:rive
 # ext:tablier
 def zi(z): return int(z)-Z0
@@ -49,6 +50,7 @@ wl=np.where(t_>9,-4.0-0.12*(t_-9)-0.6*np.clip(t_-30,0,None),np.where(t_>-9,-3.5,
 s_in=np.minimum(-9.5,-15.3+0.6*(t_-9.3))+0.6*n1                 # bord intérieur de la langue de grève
 s_nr=np.where(t_>=10,-25.8,-25.8+2.3*(10-t_))+0.6*n1              # bord du talus côté lagune
 lagoon=(t_>5)&(SS>s_nr)&(SS<s_in)                                 # eau peu profonde (reflets de la pile)
+np.save("lagoon.npy",lagoon&(t_<62))                              # mesher.py : faces d'eau de la lagune (fermée par la langue de grève) -> matériau à part
 Hb=np.where(Hbank<=3,4-np.clip(np.floor((SS+44.0-1.2*n3+1.0)/4.2),1,3),Hbank)   # marches du talus lissées (bord du plateau inchangé)
 land_near=(SS<wl)&~lagoon
 H=np.where(land_near,Hb,H)
@@ -93,6 +95,24 @@ H=np.where(beach&(bt!=GRASS),np.where(butte,1.0,0.0),H)           # galets au ra
 lower=np.zeros_like(beach)
 for d in [(1,0),(-1,0),(0,1),(0,-1)]: lower|=np.roll(H,d,(0,1))<H
 top=np.where(land_near&(Hbank<=3)&(top==GRASS)&lower,TALUS,top)
+# grève v3.1 : buttes au contour arrondi, cellules isolées abaissées, galets mêlés d'herbe et de touffes basses.
+# Ne touche que des cellules PEBBLES/TUFT qui ne bordent ni l'herbe ni le talus (GRASS et TALUS inchangés :
+# les plantes et le flux rng de mesher.py pour la grève et l'île restent ceux de la V3), ni le pied des arbustes.
+rs=np.random.default_rng(3131)                                    # aléa propre
+ed=land_near&np.isin(top,[PEBBLES,TUFT])&~near_sh
+gt=np.zeros_like(ed)
+for d in [(1,0),(-1,0),(0,1),(0,-1)]: gt|=np.roll(land_near&np.isin(top,[GRASS,TALUS]),d,(0,1))
+ed&=~gt
+bu=land_near&(top==TUFT)
+for _ in range(2):                                                # lissage majoritaire 3x3 : contour arrondi
+    bu=np.where(ed,cv2.blur(bu.astype(np.float32),(3,3),borderType=cv2.BORDER_CONSTANT)>0.5,bu)
+nbu=sum(np.roll(bu,d,(0,1)).astype(int) for d in [(1,0),(-1,0),(0,1),(0,-1)])
+low=ed&bu&(nbu<=1)                                                # buttes isolées -> touffes basses au ras des galets
+dbu=cv2.dilate(bu.astype(np.uint8),np.ones((5,5),np.uint8))>0     # à moins de 2 m d'une butte
+rr_=rs.random(H.shape)
+tb=np.where(bu&~low,TUFT,np.where(low|(dbu&(rr_<0.12))|(rr_<0.03),TUFT,np.where((dbu&(rr_<0.45))|(rr_<0.12),PEB_GRASS,PEBBLES)))
+top=np.where(ed,tb,top)
+H=np.where(ed,np.where(bu&~low,1.0,0.0),H)
 
 # île boisée (droite) : rive proche vers s=20, pointe vers (30,-28)
 isl=((SS-85)/68)**2+((TT+120)/92)**2 + 0.10*n1
@@ -140,7 +160,7 @@ for d in [(1,0),(-1,0),(0,1),(0,-1)]:
 vox[:,:,k1]=np.where(edge&nb&(top==SAND),SAND_WET,vox[:,:,k1])
 # sous les galets et les buttes : galets (pas de terre au ras de l'eau)
 for z in (-1,0):
-    vox[:,:,zi(z)]=np.where(land_near&np.isin(top,[PEBBLES,TUFT])&(vox[:,:,zi(z)]==DIRT),PEBBLES,vox[:,:,zi(z)])
+    vox[:,:,zi(z)]=np.where(land_near&np.isin(top,[PEBBLES,TUFT,PEB_GRASS])&(vox[:,:,zi(z)]==DIRT),PEBBLES,vox[:,:,zi(z)])
 
 def setbox(s0,s1,t0,t1,z0,z1,b):
     vox[si(s0):si(s1),ti(t0):ti(t1),zi(z0):zi(z1)]=b
@@ -149,16 +169,17 @@ def setbox(s0,s1,t0,t1,z0,z1,b):
 DECK_S0,DECK_S1=-75,345
 def pylon(sc):
     # pile en pierre de taille, becs arrondis
-    setbox(sc-2,sc+2,-9,9,-4,9,BRICKS)
-    setbox(sc-2,sc+2,9,10,-4,9,BRICKS); setbox(sc-2,sc+2,-10,-9,-4,9,BRICKS)
-    setbox(sc-1,sc+1,10,11,-4,9,BRICKS); setbox(sc-1,sc+1,-11,-10,-4,9,BRICKS)
+    # (v3.1 : largeur ramenée à la calibration, Wp = 17,1 m : corps t=±7 et becs ±7..8, pointes ±8..9 supprimées :
+    #  avec elles, le bord gauche tombait à x=140 à f1, contre 155 sur la photo)
+    setbox(sc-2,sc+2,-7,7,-4,9,BRICKS)
+    setbox(sc-2,sc+2,7,8,-4,9,BRICKS); setbox(sc-2,sc+2,-8,-7,-4,9,BRICKS)
     # pierres moussues à la ligne d'eau
     for z in (-1,0):
         m=vox[si(sc-2):si(sc+2),ti(-11):ti(11),zi(z)]
         r_=rng.random(m.shape)<0.55
         m[(m==BRICKS)&r_]=BRICKS_M
     # chaperon
-    setbox(sc-2,sc+2,-9,9,8,9,CAP)
+    setbox(sc-2,sc+2,-8,8,8,9,CAP)
     # jambes 2x2
     for t0_ in (4,-6):
         setbox(sc-1,sc+1,t0_,t0_+2,9,30,PINK)
@@ -235,7 +256,7 @@ for (s_,t_s,r_,h_) in SHRUBS:
             rr=r_*(0.8+0.35*r2.random())                              # contour irrégulier
             for dz in range(0,int(2*h_)+3):
                 d=(ds/rr)**2+(dt/rr)**2+((dz-h_+0.3)/h_)**2
-                if (d<=1.1 or (d<=1.6 and r2.random()<0.15)) and r2.random()>0.2 and vox[si(s_+ds),ti(t_s+dt),zi(z0+dz)]==AIR:
+                if (d<=1.1 or (d<=1.6 and r2.random()<0.15)) and r2.random()>0.45 and vox[si(s_+ds),ti(t_s+dt),zi(z0+dz)]==AIR:
                     vox[si(s_+ds),ti(t_s+dt),zi(z0+dz)]=LV_B
 np.save("vox.npy",vox); np.save("H.npy",H)
 print("voxels:",{n:int((vox==v).sum()) for n,v in [("water",WATER),("leaves",-1)] if v>=0}, "solid",int(((vox!=AIR)&(vox!=WATER)).sum()))

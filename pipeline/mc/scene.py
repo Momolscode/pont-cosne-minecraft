@@ -7,6 +7,11 @@
 #  divers  : save_blend=chemin.blend   bounces  diff_b  transp_b  adapt
 #            border=x0,x1,y0,y1 (fractions 0-1, y=0 en bas : rend et recadre une zone, pour tester vite)
 #            threads=N (0 = auto)   seed=N
+#  premier plan (v3.1) : sky_fill (force du ciel pour l'éclairage d'appoint des ombres ; défaut = sky_str ; le ciel vu
+#            par la caméra et dans les reflets garde sky_str ; sky_fill_gl=1 : les reflets voient aussi sky_fill)
+#            w_glow (lueur de l'eau de la lagune vue des seuls rayons caméra, 0 = off)  w_glow_riv (idem, reste de l'eau)
+#            w_glow_col=r,g,b (0.55,0.62,0.62)  w_glow_view=k (lueur x |N.I|^k : plus forte vue de haut ; 0 = uniforme)
+#            mblur=1 (flou de mouvement de la caméra seule)  shutter (0.3, en frames)
 #  animation : anim=1 -> OUT devient un motif de fichiers (ex. frames/f_####.png ; les # = n° de frame, 1..frames)
 #            frames=150  fps=15  frame_start=1  frame_end=frames  frame_step=1 (sous-ensemble / reprise)
 #            overwrite=0 : les frames déjà présentes sont sautées (écriture via .part.png puis renommage)
@@ -105,8 +110,11 @@ def mat_blocks(name,cutout=False):
         sh=mt.outputs[0]
     fog_wrap(nt,sh,out)
     return m
-def mat_water():
-    m=bpy.data.materials.new("water"); m.use_nodes=True; nt=m.node_tree; nt.nodes.clear()
+def mat_water(name="water",glow=None,fade=None):
+    """eau ; glow = lueur vue des seuls rayons caméra (défaut : clé w_glow_riv ; la lagune a son matériau)
+    fade=(t0,t1) : lueur ramenée de 1 à 0 entre t=t0 et t=t1 (m, coordonnées monde ; ouverture de la lagune sur le fleuve)"""
+    glow=kv("w_glow_riv",0.0) if glow is None else glow
+    m=bpy.data.materials.new(name); m.use_nodes=True; nt=m.node_tree; nt.nodes.clear()
     out=nt.nodes.new("ShaderNodeOutputMaterial")
     bs=nt.nodes.new("ShaderNodeBsdfPrincipled")
     bs.inputs["Base Color"].default_value=(0.20,0.45,0.50,1)
@@ -125,7 +133,28 @@ def mat_water():
         nt.links.new(dv.outputs[0],ofs.inputs[0]); nt.links.new(ofs.outputs[0],nz.inputs["Vector"])
     bump=nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value=kv("w_bump",0.12); bump.inputs["Distance"].default_value=0.05
     nt.links.new(nz.outputs["Fac"],bump.inputs["Height"]); nt.links.new(bump.outputs[0],bs.inputs["Normal"])
-    fog_wrap(nt,bs.outputs[0],out)
+    sh_w=bs.outputs[0]
+    if glow>0:   # lueur vue des seuls rayons caméra (débouche la lagune : reflet noir de la berge à l'ombre)
+        lpg=nt.nodes.new("ShaderNodeLightPath"); gm=nt.nodes.new("ShaderNodeMath"); gm.operation='MULTIPLY'; gm.inputs[1].default_value=glow
+        nt.links.new(lpg.outputs["Is Camera Ray"],gm.inputs[0])
+        if kv("w_glow_view",0.0)>0:   # pondérée par |N.I| : forte vue de haut (eau vue en transparence), faible en vue rasante (reflets)
+            lw=nt.nodes.new("ShaderNodeLayerWeight"); lw.inputs["Blend"].default_value=0.5
+            ng=nt.nodes.new("ShaderNodeMath"); ng.operation='SUBTRACT'; ng.inputs[0].default_value=1.0; nt.links.new(lw.outputs["Facing"],ng.inputs[1])
+            pw=nt.nodes.new("ShaderNodeMath"); pw.operation='POWER'; pw.inputs[1].default_value=kv("w_glow_view",0.0); nt.links.new(ng.outputs[0],pw.inputs[0])
+            gv=nt.nodes.new("ShaderNodeMath"); gv.operation='MULTIPLY'; nt.links.new(lpg.outputs["Is Camera Ray"],gv.inputs[0]); nt.links.new(pw.outputs[0],gv.inputs[1])
+            nt.links.new(gv.outputs[0],gm.inputs[0])
+        if fade:
+            sxyz=nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(tc.outputs["Object"],sxyz.inputs[0])
+            mr=nt.nodes.new("ShaderNodeMapRange"); mr.interpolation_type='SMOOTHSTEP'; mr.clamp=True
+            mr.inputs["From Min"].default_value,mr.inputs["From Max"].default_value=fade; mr.inputs["To Min"].default_value=1.0; mr.inputs["To Max"].default_value=0.0
+            nt.links.new(sxyz.outputs["Y"],mr.inputs["Value"])
+            gm2=nt.nodes.new("ShaderNodeMath"); gm2.operation='MULTIPLY'; nt.links.new(gm.inputs[0].links[0].from_socket,gm2.inputs[0]); nt.links.new(mr.outputs["Result"],gm2.inputs[1])
+            nt.links.new(gm2.outputs[0],gm.inputs[0])
+        eg=nt.nodes.new("ShaderNodeEmission"); nt.links.new(gm.outputs[0],eg.inputs["Strength"])
+        eg.inputs["Color"].default_value=tuple(float(x) for x in kvs("w_glow_col","0.55,0.62,0.62").split(","))+(1.0,)
+        ag=nt.nodes.new("ShaderNodeAddShader"); nt.links.new(bs.outputs[0],ag.inputs[0]); nt.links.new(eg.outputs[0],ag.inputs[1])
+        sh_w=ag.outputs[0]
+    fog_wrap(nt,sh_w,out)
     va=nt.nodes.new("ShaderNodeVolumeAbsorption"); va.inputs["Color"].default_value=(0.30,0.62,0.62,1); va.inputs["Density"].default_value=kv("w_dens",0.45)
     nt.links.new(va.outputs[0],out.inputs["Volume"])
     return m
@@ -144,6 +173,7 @@ def mat_cloud():
     return m
 MATS={"opaque":mat_blocks("blocks"),"cutout":mat_blocks("cutout",True),"water":mat_water(),"cloud":mat_cloud()}
 MATS["plants"]=MATS["cutout"]
+MATS["water_lagoon"]=mat_water("water_lagoon",kv("w_glow",0.0),(40.0,58.0))   # lagune (faces d'eau séparées par mesher.py)
 def mat_steel(name,cutout=False):
     """acier du tablier : quasi mat (le reflet du soleil rasant sur les faces côté caméra, qui renvoient
     presque exactement vers l'objectif, les blanchissait) ; treillis sans translucidité"""
@@ -169,7 +199,7 @@ def make_mesh(name,V,U,mat):
     ob=bpy.data.objects.new(name,me); sc.collection.objects.link(ob); me.materials.append(mat)
     return ob
 t0=time.time()
-for k in ("opaque","cutout","water","cloud","plants"):
+for k in ("opaque","cutout","water","water_lagoon","cloud","plants"):
     if "V_"+k in W.files: make_mesh(k,W["V_"+k],W["U_"+k],MATS[k])
 for k in ("steel","truss"):     # tablier (mesher.py)
     if "V_"+k in W.files: make_mesh(k,W["V_"+k],W["U_"+k],MATS[k])
@@ -195,6 +225,15 @@ sky.sun_disc=False
 sky.altitude=kv("alt",50.0)
 sky.air_density=kv("air",1.0); sky.aerosol_density=kv("aer",0.5); sky.ozone_density=kv("ozone",1.0)
 nt.links.new(sky.outputs[0],bg.inputs[0]); bg.inputs[1].default_value=SKY_STR
+SKY_FILL=kv("sky_fill",SKY_STR)
+if abs(SKY_FILL-SKY_STR)>1e-6:   # ciel vu (caméra, et reflets si sky_fill_gl=0) = sky_str ; éclairage d'appoint des ombres = sky_fill
+    lpw=nt.nodes.new("ShaderNodeLightPath"); sel=lpw.outputs["Is Camera Ray"]
+    if not kv("sky_fill_gl",0):
+        mxw=nt.nodes.new("ShaderNodeMath"); mxw.operation='MAXIMUM'
+        nt.links.new(lpw.outputs["Is Camera Ray"],mxw.inputs[0]); nt.links.new(lpw.outputs["Is Glossy Ray"],mxw.inputs[1]); sel=mxw.outputs[0]
+    fma=nt.nodes.new("ShaderNodeMath"); fma.operation='MULTIPLY_ADD'
+    fma.inputs[1].default_value=SKY_STR-SKY_FILL; fma.inputs[2].default_value=SKY_FILL
+    nt.links.new(sel,fma.inputs[0]); nt.links.new(fma.outputs[0],bg.inputs[1])
 ld=bpy.data.lights.new("sun",'SUN'); lo=bpy.data.objects.new("sun",ld); sc.collection.objects.link(lo)
 ld.energy=SUN_STR; ld.angle=math.radians(kv("sun_ang",0.9))
 ld.color=tuple(float(x) for x in kvs("sun_col","1.0,0.78,0.56").split(","))
@@ -221,6 +260,11 @@ if _b:
 _th=kv("threads",0)
 if _th>0: sc.render.threads_mode='FIXED'; sc.render.threads=_th
 sc.cycles.seed=kv("seed",0)
+_SH=kv("shutter",0.3)
+if kv("mblur",0):   # flou de mouvement de la caméra seule : objets (herbes déformées, nuages, eau) non floutés
+    sc.render.use_motion_blur=True; sc.render.motion_blur_shutter=_SH; sc.render.motion_blur_position='CENTER'
+    for o in sc.objects:
+        if o.type=='MESH': o.cycles.use_motion_blur=False
 sc.render.image_settings.file_format='PNG'; sc.render.image_settings.color_depth='16'
 sc.render.filepath=OUT
 
