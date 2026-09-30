@@ -9,6 +9,11 @@ NS,NT,NZ=S1-S0,T1-T0,Z1-Z0
 vox=np.zeros((NS,NT,NZ),np.uint8)
 AIR,GRASS,DIRT,COARSE,SAND,GRAVEL,STONE,BRICKS,BRICKS_M,CAP,PINK,PINK_L,STEEL,STEEL_D,ASPHALT,LOG,LV_G,LV_Y,LV_O,LV_B,LV_L,WATER,GRASS_DRY,PATH,RIVERBED,MOSSY,SAND_WET=range(27)
 LEAVES={LV_G,LV_Y,LV_O,LV_B,LV_L}
+# Nouveaux blocs (identifiants réservés, à déclarer aussi dans mesher.py) : herbe 30-34, grève 35-39, rive 40-44, tablier 45-49
+# ext:herbe
+# ext:greve
+# ext:rive
+# ext:tablier
 def zi(z): return int(z)-Z0
 def si(s): return int(s)-S0
 def ti(t): return int(t)-T0

@@ -25,7 +25,12 @@ FT={ # top, side, bottom
  LV_O:("leaves_orange",)*3, LV_B:("leaves_bush",)*3, LV_L:("leaves_light",)*3, GRASS_DRY:("grass_top_dry","grass_side","dirt"),
  PATH:("path","dirt","dirt"), RIVERBED:("riverbed",)*3, MOSSY:("mossy_stone",)*3, SAND_WET:("sand_wet",)*3,
 }
-NB=32
+# Nouveaux blocs, un bloc de lignes par zone (identifiants réservés : herbe 30-34, grève 35-39, rive 40-44, tablier 45-49)
+# ext:herbe
+# ext:greve
+# ext:rive
+# ext:tablier
+NB=64
 tile_lut=np.zeros((NB,3,3),np.int32)   # [block, face(0 top,1 side,2 bottom), variant]
 for b,(a,s_,c) in FT.items():
     for f,name in enumerate((a,s_,c)):
@@ -41,7 +46,7 @@ class Q:
     def arr(s):
         if not s.V: return np.zeros((0,4,3),np.float32),np.zeros((0,4,2),np.float32)
         return np.concatenate(s.V),np.concatenate(s.U)
-QO,QC,QW,QK=Q(),Q(),Q(),Q()     # opaque, cutout, water, cloud
+QO,QC,QW,QK,QP=Q(),Q(),Q(),Q(),Q()     # opaque, cutout, water, cloud, plants (croix, maillage à part pour l'animation)
 
 # ---------------- faces voxel (vectorisé)
 DIRS=[((1,0,0),1),((-1,0,0),1),((0,1,0),1),((0,-1,0),1),((0,0,1),0),((0,0,-1),2)]
@@ -147,7 +152,7 @@ def cross(x,y,z,tile,sz=1.0):
     for (dx,dy) in ((h,h),(h,-h)):
         V=[(x-dx,y-dy,z),(x+dx,y+dy,z),(x+dx,y+dy,z+sz),(x-dx,y-dy,z+sz)]
         u,v=tile_uv(tile,np.array([0,1,1,0.]),np.array([0,0,1,1.]))
-        QC.add(np.array([V]),np.stack([u,v],-1)[None])
+        QP.add(np.array([V]),np.stack([u,v],-1)[None])
 Hs=H
 for i in range(NS):
     s=i+S0
@@ -191,6 +196,6 @@ for i,j in np.argwhere(cm):
     if not cpad[i+1,j]:   Vs.append([(x0,y0,cz0),(x0+cs,y0,cz0),(x0+cs,y0,cz1),(x0,y0,cz1)])
     QK.add(np.array(Vs),np.zeros((len(Vs),4,2)))
 out={}
-for name,QQ in (("opaque",QO),("cutout",QC),("water",QW),("cloud",QK)):
+for name,QQ in (("opaque",QO),("cutout",QC),("water",QW),("cloud",QK),("plants",QP)):
     V,U=QQ.arr(); out["V_"+name]=V; out["U_"+name]=U; print(name,len(V),"quads")
 np.savez_compressed("world.npz",**out)

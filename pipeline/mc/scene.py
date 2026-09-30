@@ -5,6 +5,8 @@
 #  caméra  : cam_fwd / cam_right / cam_up (blocs = m, relatif à la vue)  cam_yaw / cam_pitch (°)  zoom
 #            (le soleil reste fixe dans le monde quand la caméra bouge -> frames début/fin cohérentes)
 #  divers  : save_blend=chemin.blend   bounces  diff_b  transp_b  adapt
+#            border=x0,x1,y0,y1 (fractions 0-1, y=0 en bas : rend et recadre une zone, pour tester vite)
+#            threads=N (0 = auto)   seed=N
 import bpy, numpy as np, math, sys, time, json
 from mathutils import Matrix, Vector
 import os
@@ -122,6 +124,7 @@ def mat_cloud():
     nt.links.new(mt.outputs[0],out.inputs["Surface"])
     return m
 MATS={"opaque":mat_blocks("blocks"),"cutout":mat_blocks("cutout",True),"water":mat_water(),"cloud":mat_cloud()}
+MATS["plants"]=MATS["cutout"]
 
 # ---------------- maillages (foreach_set)
 def make_mesh(name,V,U,mat):
@@ -136,8 +139,8 @@ def make_mesh(name,V,U,mat):
     ob=bpy.data.objects.new(name,me); sc.collection.objects.link(ob); me.materials.append(mat)
     return ob
 t0=time.time()
-for k in ("opaque","cutout","water","cloud"):
-    make_mesh(k,W["V_"+k],W["U_"+k],MATS[k])
+for k in ("opaque","cutout","water","cloud","plants"):
+    if "V_"+k in W.files: make_mesh(k,W["V_"+k],W["U_"+k],MATS[k])
 print("meshes built",round(time.time()-t0,1),"s")
 # plan d'eau lointain (hors monde voxel) et terre lointaine
 def big_quad(name,x0,x1,y0,y1,z,mat):
@@ -178,6 +181,14 @@ sc.view_settings.view_transform='AgX'
 try: sc.view_settings.look=LOOK
 except Exception as e: print("look err",e)
 sc.view_settings.exposure=EXPO
+_b=kvs("border","")
+if _b:
+    x0_,x1_,y0_,y1_=(float(x) for x in _b.split(","))
+    sc.render.use_border=True; sc.render.use_crop_to_border=True
+    sc.render.border_min_x,sc.render.border_max_x,sc.render.border_min_y,sc.render.border_max_y=x0_,x1_,y0_,y1_
+_th=kv("threads",0)
+if _th>0: sc.render.threads_mode='FIXED'; sc.render.threads=_th
+sc.cycles.seed=kv("seed",0)
 sc.render.image_settings.file_format='PNG'; sc.render.image_settings.color_depth='16'
 sc.render.filepath=OUT
 _sb=kvs("save_blend","")

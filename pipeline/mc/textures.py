@@ -188,6 +188,11 @@ put("riverbed",33,pal_img(np.random.default_rng(33),RB,[5,4,3,2],blob=2))
 # pierre moussue (rochers)
 MS=[C(118,122,110),C(104,108,98),C(96,120,72),C(132,134,124)]
 put("mossy_stone",34,pal_img(np.random.default_rng(34),MS,[5,4,2,2],blob=2))
+# Nouvelles tuiles (index réservés : herbe 35-39, grève 40-44, rive 45-49, tablier 50-54)
+# ext:herbe
+# ext:greve
+# ext:rive
+# ext:tablier
 Image.fromarray(atlas,"RGBA").save("atlas.png")
 import json; json.dump(TILES,open("tiles.json","w"),indent=0)
 # aperçu agrandi
