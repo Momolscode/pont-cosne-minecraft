@@ -1,5 +1,39 @@
 # Pont de Cosne × Minecraft — brief de reprise (Claude Code + Higgsfield)
 
+## 0 bis. V3.1 (30/09/2026, fin de journée) : la version à poster
+
+`renders/story_v31_1080x1920.mp4` (avec la musique d'origine) et `renders/story_v31_1080x1920_sans_audio.mp4`.
+Même trajectoire, même lumière et même durée que la V3 (décisions validées par l'utilisateur). Trois critiques indépendants ont passé la V3 en revue (fidélité à la photo, direction artistique, défauts techniques). Leurs remarques ont été réparties en deux lots corrigés en parallèle, puis fusionnés.
+
+- **Arrière-plan** (branche fix/v31a) :
+  - île plate avec une plage de sable au ras de l'eau ;
+  - chênes bas vert olive, peupliers rares, plus de feuilles orange (l'effet « ville colorée » derrière le tablier a disparu) ;
+  - colline de gauche abaissée ;
+  - brume en deux couches, plus chaude face au soleil ;
+  - nuages teintés pêche, qui s'estompent au loin.
+- **Premier plan et milieu** (branche fix/v31b) :
+  - lagune avec son propre matériau d'eau et une légère lueur, qui ne fait plus « trou noir » ;
+  - grève en galets clairs mêlés d'herbe, buttes arrondies, arbustes plus aérés ;
+  - pile en moellons gris-beige ;
+  - pylône d'un rose passé, comme sur la photo ;
+  - treillis du tablier à diagonales de 3 px et goussets carrés, doublé d'une tôle sombre ;
+  - câbles et suspentes plus fins ;
+  - éclairage d'appoint des ombres (`sky_fill`) ;
+  - léger flou de mouvement de la caméra (`mblur`) ;
+  - joints des galets adoucis, contre le scintillement.
+- **Commande exacte** (les clés V3.1 s'ajoutent à la commande V3 de la section 6) :
+  ```
+  scene.py frames/v31/f_####.png 720 16 sun_az=62 sun_el=4.5 sun_str=18 sky_str=0.10 "sun_col=1.0,0.78,0.56" expo=0.45 anim=1 frames=150 fps=15 cam_fwd1=10 cam_right1=5 cam_yaw1=9 cam_up1=4 cam_pitch1=7 cloud_dx=40 w_flow=0.4 sway=0.08 "cloud_col=1.0,0.56,0.36" cloud_sun=2 cloud_d0=300 cloud_d1=750 fog_d0=80 fog_d=700 "fog_col=0.70,0.68,0.64" fog_warm=0.7 sky_fill=0.16 w_glow=0.1 w_glow_view=1 mblur=1 shutter=0.3
+  ```
+  Les clés sont documentées en tête de `scene.py`. Sans elles, le rendu reste celui de la V3.
+- **Limites relevées au contrôle et non corrigées** :
+  - le petit îlot scintille encore un peu (−18 % au lieu des −30 % visés) ;
+  - les nuages s'estompent dès 300 m, plus tôt que demandé ;
+  - en fin de plan, la bande boisée au-dessus du tablier n'est presque plus visible ;
+  - sous le tablier, le ciel est pêche au lieu du gris-bleu de la photo ;
+  - une petite marche de sable reste visible sur l'île.
+  - Le lot « premier plan » a été interrompu par une limite d'usage avant sa relecture indépendante : seul le contrôle visuel de l'intégration a été fait (5 images, comparaison V3 / V3.1 dans la PR).
+
 ## 0. État au 30/09/2026 : V3 vidéo
 
 **La V3 est une vraie vidéo 3D** : `renders/story_v3_1080x1920.mp4`, 10 s, 9:16, 15 i/s, avec la musique de la vidéo d'origine. Il existe aussi une version sans audio, `renders/story_v3_1080x1920_sans_audio.mp4`.
