@@ -38,6 +38,7 @@ FT[PEBBLES]=("pebbles*",)*3
 FT[TUFT]=("tuft_top","tuft_side","pebbles0")
 FT[TALUS]=("grass_top*","tuft_side","dirt")
 # ext:rive
+ri=np.random.default_rng(3033)   # V3.1 : aléa des plantes de l'île (s>=10), la grève garde rng
 # ext:tablier
 NB=64
 tile_lut=np.zeros((NB,3,3),np.int32)   # [block, face(0 top,1 side,2 bottom), variant]
@@ -224,6 +225,14 @@ for i in range(NS):
             continue
         # grève, île : règle d'origine
         if base not in (GRASS,GRASS_DRY,GRAVEL,COARSE): continue
+        if s>=10:   # V3.1, île (s>=10) : plantes rares, aléa propre (ri), aucune à l'ombre du tablier ; grève (s<10) inchangée
+            if abs(t)<8: continue
+            r_=ri.random()
+            if base in (GRASS,GRASS_DRY):
+                if r_<0.01: cross(s+0.5,t+0.5,Hs[i,j],fy if ri.random()<0.5 else fw)
+                elif r_<0.06: cross(s+0.5,t+0.5,Hs[i,j],tg if base==GRASS else dg)
+            elif r_<0.03: cross(s+0.5,t+0.5,Hs[i,j],dg)
+            continue
         near=(s<-39)
         dcam=((s+47.2)**2+(t-18.6)**2)**0.5
         r_=rng.random()
@@ -242,8 +251,14 @@ g=cg.random((nx//3+2,ny//3+2)).astype(np.float32)
 import cv2
 g=cv2.resize(g,((ny//3+2)*3,(nx//3+2)*3),interpolation=cv2.INTER_CUBIC)[:nx,:ny]
 g2=cg.random((nx,ny)).astype(np.float32)
-cm=(0.8*g+0.2*g2)>0.66
 ox,oy=-500.0,-900.0
+# V3.1 : nuages plus rares et moins déchiquetés au loin (moins de lamelles serrées derrière les suspentes).
+# Tirages de cg inchangés : jusqu'à 300 m (horizontaux) du trajet de la caméra, le motif est celui de la V3 ;
+# de 300 à 750 m, le seuil de couverture monte de 0,66 à 0,88 et le bruit par cellule (g2) s'efface.
+cdist=np.hypot(ox+(np.arange(nx)[:,None]+0.5)*cs+43.0,oy+(np.arange(ny)[None,:]+0.5)*cs-15.0)
+k_=np.clip((cdist-300.0)/450.0,0,1)
+g2=g2+k_*(0.5-g2)
+cm=(0.8*g+0.2*g2)>0.66+0.22*k_
 cz0,cz1=150.0,154.0
 cpad=np.zeros((nx+2,ny+2),bool); cpad[1:-1,1:-1]=cm
 for i,j in np.argwhere(cm):

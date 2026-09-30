@@ -154,11 +154,11 @@ def leaves(seed,pal,hole=0.14):
     dark=rng.random((T,T))<0.18
     img=np.where(dark[...,None],(img.astype(int)*0.78).astype(np.uint8),img)
     return np.concatenate([img,a[...,None]],2)
-put("leaves_green",21,leaves(23,[C(74,128,46),C(62,110,40),C(90,146,58),C(54,96,34)]))
+put("leaves_green",21,leaves(23,[C(98,124,30),C(84,106,24),C(112,138,40),C(70,92,20)]))            # V3.1 : vert olive d'automne
 put("leaves_yellow",22,leaves(24,[C(196,176,64),C(176,156,52),C(214,194,86),C(160,146,50)]))
 put("leaves_orange",23,leaves(25,[C(206,126,52),C(186,104,40),C(222,150,72),C(170,92,36)]))
 put("leaves_bush",24,leaves(26,[C(120,148,90),C(102,130,76),C(140,164,104),C(88,114,64)],hole=0.24))   # arbustes de grève gris-vert
-put("leaves_light",25,leaves(27,[C(120,164,70),C(104,146,60),C(136,178,84),C(94,132,54)]))
+put("leaves_light",25,leaves(27,[C(148,160,52),C(130,142,44),C(164,176,66),C(112,126,38)]))       # V3.1 : vert-jaune
 # bûche
 lg=np.zeros((T,T,3),np.uint8); rng=np.random.default_rng(28)
 B=[C(104,84,62),C(90,72,52),C(118,96,72),C(78,62,44)]

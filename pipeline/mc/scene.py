@@ -2,6 +2,11 @@
 # usage: python scene.py OUT.png WIDTH SAMPLES [key=val ...]      (hauteur = WIDTH*16/9)
 #  lumière : sun_az (° depuis l'axe caméra d'origine, + = gauche)  sun_el (°)  sun_str  sky_str  expo
 #            sun_col=r,g,b   fog_col=r,g,b   fog_d  fog_max  cloud_op  cloud_em  bump  look="AgX - ..."
+#  V3.1 arrière-plan (défauts = V3, effet nul) :
+#            fog_d0 (m) : brume V3 (échelle fog_dn=900, couleur fog_coln) en deçà, échelle fog_d et couleur fog_col au-delà
+#            fog_warm (0-1) fog_warm_col=r,g,b fog_warm_pow (2) : brume lointaine plus chaude face au soleil
+#            cloud_col=r,g,b (émission)  cloud_sun cloud_sun_col=r,g,b (lueur des faces au soleil)
+#            cloud_d0 cloud_d1 (m) : nuages estompés entre d0 et d1 (smoothstep ; cloud_d1=0 : pas d'estompage)
 #  caméra  : cam_fwd / cam_right / cam_up (blocs = m, relatif à la vue)  cam_yaw / cam_pitch (°)  zoom
 #            (le soleil reste fixe dans le monde quand la caméra bouge -> frames début/fin cohérentes)
 #  divers  : save_blend=chemin.blend   bounces  diff_b  transp_b  adapt
@@ -64,21 +69,50 @@ sc.camera=co
 
 # ---------------- matériaux
 def fog_wrap(nt,shader_out,out_node):
-    """mélange brume (émission) pour les rayons caméra selon la distance"""
+    """mélange brume (émission) pour les rayons caméra selon la distance
+    V3.1 (fog_d0>0) : deux couches. Jusqu'à fog_d0 (m), brume V3 (échelle fog_dn, couleur fog_coln) : pile et premier
+    plan inchangés ; au-delà, brume plus dense (échelle fog_d) de couleur fog_col, tirée vers fog_warm_col face au soleil
+    (fog_warm). brume = FOG_MAX*(1-exp(-(min(d,d0)/fog_dn + max(0,d-d0)/fog_d)))"""
     lp=nt.nodes.new("ShaderNodeLightPath"); cd=nt.nodes.new("ShaderNodeCameraData")
-    m1=nt.nodes.new("ShaderNodeMath"); m1.operation='DIVIDE'; m1.inputs[1].default_value=FOG_D
-    nt.links.new(cd.outputs["View Distance"],m1.inputs[0])
-    m2=nt.nodes.new("ShaderNodeMath"); m2.operation='MULTIPLY'; m2.inputs[1].default_value=-1.0
-    nt.links.new(m1.outputs[0],m2.inputs[0])
-    m3=nt.nodes.new("ShaderNodeMath"); m3.operation='EXPONENT'; nt.links.new(m2.outputs[0],m3.inputs[0])
-    m4=nt.nodes.new("ShaderNodeMath"); m4.operation='SUBTRACT'; m4.inputs[0].default_value=1.0; nt.links.new(m3.outputs[0],m4.inputs[1])
-    m5=nt.nodes.new("ShaderNodeMath"); m5.operation='MULTIPLY'; m5.inputs[1].default_value=FOG_MAX; nt.links.new(m4.outputs[0],m5.inputs[0])
-    m6=nt.nodes.new("ShaderNodeMath"); m6.operation='MULTIPLY'; nt.links.new(m5.outputs[0],m6.inputs[0]); nt.links.new(lp.outputs["Is Camera Ray"],m6.inputs[1])
+    def op(o,a,b=None,clamp=False):
+        n=nt.nodes.new("ShaderNodeMath"); n.operation=o; n.use_clamp=clamp
+        for k,x in enumerate((a,b)):
+            if x is None: continue
+            if isinstance(x,(int,float)): n.inputs[k].default_value=x
+            else: nt.links.new(x,n.inputs[k])
+        return n.outputs[0]
+    dist=cd.outputs["View Distance"]
+    if FOG_D0>0:
+        e_near=op('DIVIDE',op('MINIMUM',dist,FOG_D0),FOG_DN)
+        e=op('ADD',e_near,op('DIVIDE',op('MAXIMUM',op('SUBTRACT',dist,FOG_D0),0.0),FOG_D))
+    else: e=op('DIVIDE',dist,FOG_D)
+    f=op('SUBTRACT',1.0,op('EXPONENT',op('MULTIPLY',e,-1.0)))
+    m6=nt.nodes.new("ShaderNodeMath"); m6.operation='MULTIPLY'; nt.links.new(op('MULTIPLY',f,FOG_MAX),m6.inputs[0]); nt.links.new(lp.outputs["Is Camera Ray"],m6.inputs[1])
     em=nt.nodes.new("ShaderNodeEmission"); em.inputs["Color"].default_value=FOG_COL; em.inputs["Strength"].default_value=FOG_STR
+    def mix(fac,a,b):
+        mc=nt.nodes.new("ShaderNodeMix"); mc.data_type='RGBA'; so={x.identifier:x for x in list(mc.inputs)+list(mc.outputs)}
+        for k,x in (("A_Color",a),("B_Color",b)):
+            if isinstance(x,tuple): so[k].default_value=x
+            else: nt.links.new(x,so[k])
+        nt.links.new(fac,so["Factor_Float"]); return so["Result_Color"]
+    col=FOG_COL
+    if FOG_WARM>0:   # direction de vue = -Incoming : max(0, vue.soleil)^p * fog_warm
+        geo=nt.nodes.new("ShaderNodeNewGeometry"); dp=nt.nodes.new("ShaderNodeVectorMath"); dp.operation='DOT_PRODUCT'
+        dp.inputs[1].default_value=tuple(-float(x) for x in SUN_DIR_M); nt.links.new(geo.outputs["Incoming"],dp.inputs[0])
+        col=mix(op('MULTIPLY',op('POWER',op('MAXIMUM',dp.outputs["Value"],0.0),FOG_WARM_POW),FOG_WARM,clamp=True),FOG_COL,FOG_WARM_COL)
+    if FOG_D0>0:     # part de la couche lointaine dans la brume totale : 1 - (1-exp(-e_near))/(1-exp(-e))
+        w=op('SUBTRACT',1.0,op('DIVIDE',op('SUBTRACT',1.0,op('EXPONENT',op('MULTIPLY',e_near,-1.0))),f),clamp=True)
+        col=mix(w,FOG_COLN,col)
+    if col is not FOG_COL: nt.links.new(col,em.inputs["Color"])
     mx=nt.nodes.new("ShaderNodeMixShader")
     nt.links.new(m6.outputs[0],mx.inputs[0]); nt.links.new(shader_out,mx.inputs[1]); nt.links.new(em.outputs[0],mx.inputs[2])
     nt.links.new(mx.outputs[0],out_node.inputs["Surface"])
 FOG_COL=tuple(float(x) for x in kvs("fog_col","0.62,0.66,0.78").split(","))+(1.0,)
+FOG_COLN=tuple(float(x) for x in kvs("fog_coln","0.62,0.66,0.78").split(","))+(1.0,)
+FOG_D0=kv("fog_d0",0.0); FOG_DN=kv("fog_dn",900.0); FOG_WARM=kv("fog_warm",0.0); FOG_WARM_POW=kv("fog_warm_pow",2.0)
+FOG_WARM_COL=tuple(float(x) for x in kvs("fog_warm_col","1.0,0.72,0.45").split(","))+(1.0,)
+_fh=np.array([fwd0[0],fwd0[1]]); _fh/=np.linalg.norm(_fh); _dh=math.cos(math.radians(SUN_AZ_REL))*_fh+math.sin(math.radians(SUN_AZ_REL))*np.array([-_fh[1],_fh[0]])
+SUN_DIR_M=np.array([_dh[0]*math.cos(math.radians(SUN_EL)),_dh[1]*math.cos(math.radians(SUN_EL)),math.sin(math.radians(SUN_EL))])   # = sun_dir (ciel + soleil)
 FOG_STR=kv("fog_str",1.0)
 def mat_blocks(name,cutout=False):
     m=bpy.data.materials.new(name); m.use_nodes=True; nt=m.node_tree; nt.nodes.clear()
@@ -141,6 +175,36 @@ def mat_cloud():
     ad=nt.nodes.new("ShaderNodeAddShader"); nt.links.new(mx.outputs[0],ad.inputs[0]); nt.links.new(em.outputs[0],ad.inputs[1])
     nt.links.new(tp.outputs[0],mt.inputs[1]); nt.links.new(ad.outputs[0],mt.inputs[2])
     nt.links.new(mt.outputs[0],out.inputs["Surface"])
+    # V3.1 : teinte (cloud_col), lueur côté soleil (cloud_sun), estompage des nuages lointains (cloud_d0/d1).
+    # Seuls les rayons qui voient les nuages (caméra, reflets, réfraction) en profitent : les rayons diffus et
+    # d'ombre gardent les nuages V3, l'éclairage d'appoint qu'ils donnent aux ombres est donc inchangé.
+    CC=kvs("cloud_col",""); CS=kv("cloud_sun",0.0); CD0,CD1=kv("cloud_d0",600.0),kv("cloud_d1",0.0)
+    if CC or CS>0 or CD1>CD0:
+        lpc=nt.nodes.new("ShaderNodeLightPath"); v1=nt.nodes.new("ShaderNodeMath"); v1.operation='ADD'
+        v2=nt.nodes.new("ShaderNodeMath"); v2.operation='ADD'; v2.use_clamp=True
+        nt.links.new(lpc.outputs["Is Camera Ray"],v1.inputs[0]); nt.links.new(lpc.outputs["Is Glossy Ray"],v1.inputs[1])
+        nt.links.new(v1.outputs[0],v2.inputs[0]); nt.links.new(lpc.outputs["Is Transmission Ray"],v2.inputs[1]); vis=v2.outputs[0]
+    if CC:
+        mc=nt.nodes.new("ShaderNodeMix"); mc.data_type='RGBA'; so={x.identifier:x for x in list(mc.inputs)+list(mc.outputs)}
+        so["A_Color"].default_value=tuple(em.inputs["Color"].default_value); so["B_Color"].default_value=tuple(float(x) for x in CC.split(","))+(1.0,)
+        nt.links.new(vis,so["Factor_Float"]); nt.links.new(so["Result_Color"],em.inputs["Color"])
+    if CS>0:   # lueur chaude des faces tournées vers le soleil : cloud_sun*max(0, N.soleil)
+        geo=nt.nodes.new("ShaderNodeNewGeometry"); dp=nt.nodes.new("ShaderNodeVectorMath"); dp.operation='DOT_PRODUCT'
+        dp.inputs[1].default_value=tuple(float(x) for x in SUN_DIR_M); nt.links.new(geo.outputs["Normal"],dp.inputs[0])
+        s1=nt.nodes.new("ShaderNodeMath"); s1.operation='MAXIMUM'; s1.inputs[1].default_value=0.0; nt.links.new(dp.outputs["Value"],s1.inputs[0])
+        s2=nt.nodes.new("ShaderNodeMath"); s2.operation='MULTIPLY'; s2.inputs[1].default_value=CS; nt.links.new(s1.outputs[0],s2.inputs[0])
+        s3=nt.nodes.new("ShaderNodeMath"); s3.operation='MULTIPLY'; nt.links.new(s2.outputs[0],s3.inputs[0]); nt.links.new(vis,s3.inputs[1])
+        e2=nt.nodes.new("ShaderNodeEmission"); e2.inputs["Color"].default_value=tuple(float(x) for x in kvs("cloud_sun_col","1.0,0.62,0.38").split(","))+(1.0,)
+        nt.links.new(s3.outputs[0],e2.inputs["Strength"])
+        a2=nt.nodes.new("ShaderNodeAddShader"); nt.links.new(ad.outputs[0],a2.inputs[0]); nt.links.new(e2.outputs[0],a2.inputs[1]); nt.links.new(a2.outputs[0],mt.inputs[2])
+    if CD1>CD0:   # opacité * (1 - smoothstep(d0, d1, distance)) pour les rayons qui voient les nuages
+        op=mt.inputs[0].default_value
+        cdn=nt.nodes.new("ShaderNodeCameraData"); mr=nt.nodes.new("ShaderNodeMapRange"); mr.interpolation_type='SMOOTHSTEP'
+        mr.inputs["From Min"].default_value=CD0; mr.inputs["From Max"].default_value=CD1
+        mr.inputs["To Min"].default_value=op; mr.inputs["To Max"].default_value=0.0
+        nt.links.new(cdn.outputs["View Distance"],mr.inputs["Value"])
+        mo=nt.nodes.new("ShaderNodeMapRange"); mo.inputs["To Min"].default_value=op; nt.links.new(vis,mo.inputs["Value"]); nt.links.new(mr.outputs["Result"],mo.inputs["To Max"])
+        nt.links.new(mo.outputs["Result"],mt.inputs[0])
     return m
 MATS={"opaque":mat_blocks("blocks"),"cutout":mat_blocks("cutout",True),"water":mat_water(),"cloud":mat_cloud()}
 MATS["plants"]=MATS["cutout"]
