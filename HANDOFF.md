@@ -1,6 +1,30 @@
 # Pont de Cosne × Minecraft — brief de reprise (Claude Code + Higgsfield)
 
-## 0. Démarrage rapide — à coller dans Claude Code
+## 0. État au 30/09/2026 : V3 vidéo
+
+**La V3 est une vraie vidéo 3D** : `renders/story_v3_1080x1920.mp4`, 10 s, 9:16, 15 i/s, avec la musique de la vidéo d'origine. Il existe aussi une version sans audio, `renders/story_v3_1080x1920_sans_audio.mp4`.
+Tout est rendu avec le pipeline Blender (section 6), sans IA générative : aucune géométrie ne « fond ».
+
+- **Mouvement** : la frame 1 reprend exactement le cadrage de la vidéo. La caméra fait ensuite un arc en montant vers le pylône (trajectoire C, section 6).
+  Nuages cubiques qui dérivent, eau animée, herbes qui ondulent.
+- **Corrections par rapport à la V2** :
+  - tablier en acier gris bleuté, poutres latérales à croisillons en X et goussets en losange, passerelle en treillis sous le tablier ;
+  - pelouse d'automne variée (vert olive, herbe sèche, plaques de terre, chemin de terre en bas) ;
+  - petits triangles parasites supprimés (cause : parois de marches de terrain d'un bloc, éclairées en rasant) ;
+  - grève du milieu organisée en bandes comme sur la photo : lagune avec le reflet de la pile, galets calcaires, buttes d'herbe, deux arbustes.
+- **Limites restantes** :
+  - rive d'en face et arbres lointains encore peu lisibles (chantier non fait) ;
+  - arbustes de la grève sombres à contre-jour ;
+  - galets plus gris que blancs au soleil rasant ;
+  - lagune assez sombre en fin de plan ;
+  - rendu à 16 samples : scintillement du débruitage possible, non vérifié image par image.
+- **Paramètres exacts du rendu** : section 6 (« Animation »), en 720×1280 et 16 samples, puis `encode.py` pour sortir en 1080×1920.
+
+**Pour mélanger avec les vidéos POV** (dossier `pov-minecraft/`, branche `pov-minecraft`) : utiliser `renders/story_v3_1080x1920_sans_audio.mp4` comme plan « monde voxel ».
+Les 150 frames PNG ne sont pas dans le dépôt, mais elles se re-rendent à l'identique avec la commande de la section 6.
+La frame 1 est calée sur la vraie vidéo : un fondu ou un raccord entre `source/pont-cosne_original.mov` et la V3 tombe au même cadrage.
+
+Démarrage rapide pour une session Higgsfield (ancien plan, toujours valable pour aller plus loin que la V3) :
 
 ```
 Lis HANDOFF.md. Connecte Higgsfield (section 4), puis lance la piste A :
@@ -18,6 +42,7 @@ Historique des retours :
 2. V1 (animation pixel-art 2D) → « C'est mauvais, refais »
 3. « Utilise Higgsfield si besoin » (pas d'accès Higgsfield dans la session où V2 a été faite)
 4. V2 (reconstruction 3D voxel, `renders/final_*`) → « on retravaille tout ça avec Higgsfield »
+5. Higgsfield injoignable depuis la session cloud → V3 : vidéo rendue avec le pipeline (travelling, animation, corrections) ; trajectoire C validée sur un aperçu.
 
 ## 2. Contenu
 
@@ -42,7 +67,7 @@ Historique des retours :
   La variante « l » utilisait `sun_col=1.0,0.52,0.28` (plus orangé). Le final a gardé la couleur par défaut parce qu'une clé mal nommée
   avait été ignorée sans prévenir. `scene.py` affiche maintenant un avertissement pour toute clé inconnue.
 
-Limites connues, à améliorer avec Higgsfield :
+Limites connues de la V2 (tablier, herbe, triangles et grève corrigés en V3, voir section 0) :
 - Lumière de fin de journée sous ciel bleu, alors que la vidéo est filmée sous un ciel d'automne couvert : c'est un choix artistique, à garder ou à inverser.
 - Premier plan d'herbe un peu plat et répétitif, avec quelques artefacts : de petits triangles à texture « côté d'herbe » plantés dans la pelouse.
 - Grève du milieu en blocs épars assez bruités. Rive d'en face et arbres lointains peu lisibles.
