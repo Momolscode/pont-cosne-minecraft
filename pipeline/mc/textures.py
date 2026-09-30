@@ -80,31 +80,43 @@ put("gravel",10,gv)
 # pierre
 ST=[C(128,128,126),C(114,114,112),C(142,142,140),C(104,104,102)]
 put("stone",11,pal_img(np.random.default_rng(14),ST,[5,4,3,2],blob=2))
-# pierres de taille (pile) calcaire
-def bricks(seed,mossy=False):
+# pierres de taille (pile) : moellons calcaires gris-beige contrastés, 3 assises irrégulières par bloc (5, 6, 5 px),
+# joints sombres ; mêmes assises pour toutes les variantes (les joints horizontaux se raccordent d'un bloc à l'autre)
+def bricks(seed,mossy=False,tone=1.0):
     rng=np.random.default_rng(seed)
-    base=[C(196,184,154),C(184,172,142),C(206,196,168),C(174,162,134)]
-    img=pal_img(rng,base,[5,4,3,2],blob=1).copy()
-    mortar=np.array(C(146,136,114),np.uint8)
-    for r in range(4):
-        y=r*4+3
-        img[y,:]=mortar
-        off=(r%2)*4 + rng.integers(0,2)
-        for x in range(off,T+8,8):
-            if 0<=x<T: img[r*4:r*4+3,x]=mortar
-        # nuance par pierre
-        for x0 in range(off-8,T,8):
-            a=max(0,x0+1); b=min(T,x0+8)
-            if b>a:
-                sh=rng.integers(-10,11)
-                img[r*4:r*4+3,a:b]=np.clip(img[r*4:r*4+3,a:b].astype(int)+sh,0,255)
-    if mossy:
-        M=[C(92,120,62),C(78,104,52),C(106,134,70)]
-        for _ in range(14):
-            y,x=rng.integers(0,T,2); img[y,x:x+rng.integers(1,3)]=M[rng.integers(0,3)]
-        img[12:16,:][rng.random((4,T))<0.45]=M[0]
-    return img
+    SB=[C(208,174,164),C(196,166,158),C(218,188,176),C(182,154,148),C(202,176,168),C(160,134,128),C(226,200,188),C(138,116,112)]
+    WB=np.array([5,4,3,2,3,1.2,2,0.8]); WB=WB/WB.sum()
+    img=np.zeros((T,T,3),int)
+    joint=np.array(C(50,46,44))
+    y=0
+    for hc in (5,6,5):                                   # assises (px) ; joint = dernière ligne de l'assise
+        x=int(rng.integers(0,T)); n=0
+        while n<T:
+            w=int(rng.integers(5,11)); w=min(w,T-n)
+            if T-n-w<4: w=T-n                                   # pas de pierre de moins de 4 px en fin de rang
+            c=(np.array(SB[rng.choice(len(SB),p=WB)])*tone).astype(int)+rng.integers(-16,17)
+            for k in range(w):
+                xx=(x+k)%T
+                img[y:y+hc-1,xx]=c+rng.integers(-6,7,(hc-1,3))
+                if k==0: img[y:y+hc-1,xx]=joint+8               # joint montant
+            img[y,(x+1)%T:(x+1)%T+max(0,min(w-2,T-(x+1)%T))]+=10   # arête haute éclairée
+            if rng.random()<0.35:                                 # pierre patinée : tache sombre
+                yy,xx0=y+int(rng.integers(0,hc-1)),(x+int(rng.integers(1,max(2,w))))%T
+                img[yy,xx0]-=28
+            x=(x+w)%T; n+=w
+        img[y+hc-1,:]=joint+rng.integers(-6,7,(T,1))
+        y+=hc
+    for x in rng.choice(T,int(rng.integers(1,4)),replace=False):   # coulures sombres (ruissellement, photo)
+        y0=int(rng.integers(0,6)); img[y0:y0+int(rng.integers(5,12)),x]-=32
+    if mossy:                                                       # pied de pile : pierre mouillée plus sombre, mousse, bande sombre en bas
+        img=(img*np.linspace(0.92,0.62,T)[:,None,None]).astype(int)
+        M=[C(84,108,58),C(70,94,48),C(98,122,64)]
+        for _ in range(12):
+            y_,x_=rng.integers(4,T,2); img[y_,x_:x_+rng.integers(1,3)]=M[rng.integers(0,3)]
+        img[12:16,:][rng.random((4,T))<0.4]=M[0]
+    return np.clip(img,0,255).astype(np.uint8)
 put("bricks",12,bricks(15)); put("bricks_mossy",13,bricks(16,True))
+put("bricks1",70,bricks(115,tone=0.82)); put("bricks2",71,bricks(215,tone=1.13)); TILES["bricks0"]=TILES["bricks"]   # variantes ("bricks*", mesher.py)
 cap=np.full((T,T,3),C(204,196,176),np.uint8); rng=np.random.default_rng(17)
 cap=np.clip(cap.astype(int)+rng.integers(-6,7,(T,T,1)),0,255).astype(np.uint8)
 cap[0,:]=cap[-1,:]=cap[:,0]=cap[:,-1]=C(170,162,142)
@@ -112,12 +124,13 @@ put("cap",14,cap)
 # béton rose (pylône)
 def pink(seed,light=False):
     rng=np.random.default_rng(seed)
-    if light: Pk=[C(218,168,152),C(206,156,140),C(228,182,166),C(198,146,132)]
-    else:     Pk=[C(196,124,114),C(184,112,104),C(208,138,126),C(172,104,98),C(214,148,134)]
-    img=pal_img(rng,Pk,[5,4,3,2,1][:len(Pk)],blob=1).astype(int)
+    # béton rose pâle (photo : saumon délavé, peu saturé) ; moucheture réduite
+    if light: Pk=[C(220,195,185),C(214,189,179),C(226,201,191),C(210,184,175)]
+    else:     Pk=[C(205,165,155),C(199,159,150),C(211,171,160),C(195,156,147),C(216,176,164)]
+    img=pal_img(rng,Pk,[5,4,3,2,1][:len(Pk)],blob=2).astype(int)
     # coulures verticales légères
-    for x in rng.choice(T,3,replace=False):
-        y0=rng.integers(0,8); img[y0:y0+rng.integers(4,10),x]-=10
+    for x in rng.choice(T,2,replace=False):
+        y0=rng.integers(0,8); img[y0:y0+rng.integers(4,10),x]-=7
     return np.clip(img,0,255).astype(np.uint8)
 put("pink",15,pink(18)); put("pink_light",16,pink(19,True))
 # acier du tablier : gris bleuté volontairement sombre. Les faces verticales côté caméra reçoivent
@@ -196,8 +209,8 @@ def flower(seed,petal,center):
 put("flower_yellow",30,flower(31,C(236,204,48),C(200,140,24)))
 put("flower_white",31,flower(32,C(238,238,228),C(230,190,40)))
 # câble / chaîne
-cb=np.zeros((T,T,3),np.uint8); cb[:]=C(58,64,74)
-for y in range(0,T,4): cb[y:y+2,:]=C(80,88,100)
+cb=np.zeros((T,T,3),np.uint8); cb[:]=C(62,68,78)             # câble mince (4 px) : torons à peine marqués
+for y in range(0,T,4): cb[y,:]=C(76,83,94)
 put("cable",32,cb)
 # lit de rivière (sous l'eau)
 RB=[C(150,138,104),C(134,122,92),C(164,152,116),C(120,110,84)]
@@ -232,20 +245,29 @@ def weeds(seed):
     return img
 put("weeds",39,weeds(40))
 # ext:greve
-# galets calcaire (grève) : gros cailloux arrondis blanchâtres, ombrés, sur joints gris-beige ; tuile raccordable
-def pebbles(seed):
+# galets calcaire (grève) : gros cailloux (3-5 px) blancs, contrastés, sur joints brun-gris sombres ; tuile raccordable
+def pebbles(seed,n_st=14):
     rng=np.random.default_rng(seed)
-    img=pal_img(rng,[C(164,156,142),C(152,144,130),C(174,166,152),C(138,130,118)],[5,4,3,2],blob=1).astype(int)
-    PB=[C(232,230,222),C(218,216,208),C(242,240,234),C(204,202,194),C(224,218,204),C(194,192,186)]
-    yy,xx=np.mgrid[0:T,0:T]
-    for _ in range(13):
-        cy_,cx_=rng.uniform(0,T,2); ry,rx=rng.uniform(1.4,2.3),rng.uniform(1.8,3.0)
+    img=pal_img(rng,[C(130,110,84),C(124,104,80),C(136,116,88),C(118,100,76)],[5,4,3,2],blob=2).astype(int)   # joints brun chaud (taches de 2 px : moins de scintillement)
+    PB=[C(244,230,202),C(238,220,188),C(246,236,212),C(236,212,176),C(240,222,190),C(230,206,170)]   # crème et ocre clair
+    yy,xx=np.mgrid[0:T,0:T]; placed=np.zeros((T,T),bool); n=0
+    for _ in range(300):
+        if n>=n_st: break
+        cy_,cx_=rng.uniform(0,T,2); ry,rx=rng.uniform(1.5,2.4),rng.uniform(1.6,2.6)
         dy=(yy-cy_+T/2)%T-T/2; dx=(xx-cx_+T/2)%T-T/2          # distance torique
         m=(dy/ry)**2+(dx/rx)**2<=1.0
+        if (m&placed).sum()>0.35*m.sum(): continue
+        n+=1
+        ring=np.zeros((T,T),bool)                                 # liseré de joint autour du galet (sépare les galets voisins)
+        for sy,sx in ((1,0),(-1,0),(0,1),(0,-1)): ring|=np.roll(m,(sy,sx),(0,1))
+        ring&=~m; img[ring&placed]=np.array(C(124,104,80)); placed|=m
         c=np.array(PB[rng.integers(0,len(PB))])
-        img[m]=c+rng.integers(-4,5,(m.sum(),1))
-        img[m&((dy/ry+dx/rx)<-0.9)]+=10                          # reflet haut-gauche
-        img[m&((dy/ry+dx/rx)>0.95)]-=30                          # ombre bas-droite
+        img[m]=c+rng.integers(-2,3,(m.sum(),1))
+        img[m&((dy/ry+dx/rx)<-0.9)]+=6                           # reflet haut-gauche
+        img[m&((dy/ry+dx/rx)>1.05)]-=22                          # ombre bas-droite
+    for _ in range(8):                                          # gravillons dans les joints
+        y,x=rng.integers(0,T,2)
+        if not placed[y,x]: img[y,x]=C(176,168,152)
     return np.clip(img,0,255).astype(np.uint8)
 for i in range(3): put(f"pebbles{i}",40+i,pebbles(40+i))
 # buttes d'herbe drue : dessus en touffes sombres, côté en brins de hauteurs variées (base sombre, pointes claires)
@@ -263,29 +285,42 @@ for _ in range(15):                                              # brins : du ba
         ts_[y,xx_]=np.clip(c*f,0,255).astype(int)
     if rg.random()<0.2: ts_[T-h:T-h+2,x]=C(152,150,86)          # pointe sèche
 put("tuft_side",44,np.clip(ts_,0,255).astype(np.uint8))
+# v3.1 : galets mêlés d'herbe (bloc PEB_GRASS), arbustes plus clairs et contrastés, herbes en croix de la grève
+pg=pebbles(72,8).astype(int); rg=np.random.default_rng(73)
+for _ in range(7):                                               # touffes vertes dans les joints
+    y,x=rg.integers(0,T,2); c=np.array(TG[rg.integers(0,len(TG))])
+    for dy,dx in ((0,0),(0,1),(1,0),(-1,0),(0,-1),(1,1)):
+        if rg.random()<0.8: pg[(y+dy)%T,(x+dx)%T]=np.clip(c*rg.uniform(0.7,1.1),0,255)
+put("pebbles_grass",72,np.clip(pg,0,255).astype(np.uint8))
+lb=leaves(26,[C(150,172,108),C(122,148,88),C(176,194,132),C(96,122,70)],hole=0.38).astype(int); rg=np.random.default_rng(74)
+hl=(rg.random((T,T))<0.22)&(lb[...,3]>0); lb[hl,:3]=np.clip(lb[hl,:3]*1.5,0,255)    # éclats clairs (feuilles au soleil)
+dk=(rg.random((T,T))<0.18)&(lb[...,3]>0)&~hl; lb[dk,:3]=(lb[dk,:3]*0.45).astype(int)  # creux sombres
+sv=(rg.random((T,T))<0.1)&(lb[...,3]>0)&~dk; lb[sv,:3]=np.array(C(206,218,176))          # revers argentés des feuilles (photo)
+put("leaves_bush",24,np.clip(lb,0,255).astype(np.uint8))   # redéclarée : arbustes de grève gris-vert, plus clairs et contrastés
+put("grass_strand",73,plant(75,[C(128,146,98),C(110,128,84),C(146,160,112),C(96,112,72),C(160,164,118)],n=12,hmin=8,tip=C(176,172,124)))
+put("tuft_plant",74,plant(76,TG+[C(152,150,86)],n=13,hmin=5,hmax=15,tip=C(140,176,84)))
+put("grass_dense",75,plant(77,[C(78,134,46),C(66,118,40),C(92,148,56),C(58,102,34),C(106,156,62)],n=14,hmin=9,hmax=16,tip=C(128,168,72)))
 # ext:rive
 # ext:tablier
-# panneau de poutre latérale 2 m x 1,5 m (32x24 px, alpha) : croisillon en X, gousset en losange,
-# montant sous le gousset, goussets d'angle. Découpé en 3 tuiles : haut gauche, haut droite, bas (2 demi-tuiles)
-SM=np.array(C(56,65,85)+(255,),np.uint8); SH=np.array(C(63,73,94)+(255,),np.uint8); SK=np.array(C(36,42,55)+(255,),np.uint8)
+# panneau de poutre latérale 2 m x 1,5 m (32x24 px, alpha) : croisillon en X de 3 px, gousset carré plein au croisement,
+# montants aux bords du panneau, goussets d'angle ; acier gris. Découpé en 3 tuiles : haut gauche, haut droite, bas (2 demi-tuiles)
+SM=np.array(C(44,48,56)+(255,),np.uint8); SH=np.array(C(58,63,72)+(255,),np.uint8); SK=np.array(C(26,28,34)+(255,),np.uint8)   # acier gris (face au soleil rasant : albédo sombre)
 PH,PW=24,32
 pan=np.zeros((PH,PW,4),np.uint8)
-for x in range(PW):                                  # diagonales en escalier, 2 px
+for x in range(PW):                                  # diagonales en escalier, 3 px (arête haute claire, basse sombre)
     for xx in (x,PW-1-x):
         y=int(x*(PH-1)/(PW-1)+0.5)
-        pan[y,xx]=SH
-        if y+1<PH: pan[y+1,xx]=SM
-pan[15:PH,15:17]=SM; pan[15:PH,15]=SH                # montant vertical
+        for dy,c in ((-1,SH),(0,SM),(1,SK)):
+            if 0<=y+dy<PH: pan[y+dy,xx]=c
+pan[:,0:2]=SM; pan[:,0]=SH; pan[:,PW-1]=SK           # montants (partagés avec le panneau voisin : 3 px)
 yy,xx=np.mgrid[0:PH,0:PW]
 for (cx,cy) in ((0,0),(PW,0),(0,PH),(PW,PH)):       # goussets d'angle (se rejoignent d'un panneau à l'autre)
     tri=np.abs(xx+0.5-cx)+np.abs(yy+0.5-cy)*1.2<5
     pan[tri]=SM
-dia=np.abs(xx-15.5)/7.5+np.abs(yy-11.5)/6.0          # gousset central en losange
-GP=np.array(C(66,77,98)+(255,),np.uint8)
-pan[dia<=1.0]=SK; pan[dia<=0.8]=GP
-pan[(dia<=0.8)&((yy-11.5)/6.0+(xx-15.5)/7.5<0)&(dia>0.6)]=np.array(C(75,87,109)+(255,),np.uint8)   # arête éclairée
-for (ry,rx) in ((11,15),(11,10),(11,21),(8,15),(15,15)):
-    pan[ry,rx]=np.array(C(88,100,122)+(255,),np.uint8); pan[ry+1,rx]=SK   # rivets
+sq=(np.abs(xx-15.5)<=4)&(np.abs(yy-11.5)<=4)          # gousset carré plein (8x8), sans point central
+pan[sq]=SM; pan[sq&((xx==12)|(yy==8))]=SH; pan[sq&((xx==19)|(yy==15))]=SK
+for (ry,rx) in ((9,13),(9,18),(14,13),(14,18)):
+    pan[ry,rx]=SH                                    # rivets d'angle
 put("truss_a",50,pan[0:16,0:16]); put("truss_b",51,pan[0:16,16:32])
 put("truss_c",52,np.concatenate([pan[16:24,0:16],pan[16:24,16:32]],0))
 Image.fromarray(atlas,"RGBA").save("atlas.png")

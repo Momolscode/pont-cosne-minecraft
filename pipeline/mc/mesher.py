@@ -37,6 +37,9 @@ TALUS=37
 FT[PEBBLES]=("pebbles*",)*3
 FT[TUFT]=("tuft_top","tuft_side","pebbles0")
 FT[TALUS]=("grass_top*","tuft_side","dirt")
+PEB_GRASS=55                                                   # v3.1 : galets mêlés d'herbe
+FT[PEB_GRASS]=("pebbles_grass","pebbles0","pebbles0")
+FT[BRICKS]=("bricks*",)*3                                      # v3.1 : pile, 3 variantes de moellons (bricks0 = bricks)
 # ext:rive
 ri=np.random.default_rng(3033)   # V3.1 : aléa des plantes de l'île (s>=10), la grève garde rng
 # ext:tablier
@@ -57,6 +60,7 @@ class Q:
         if not s.V: return np.zeros((0,4,3),np.float32),np.zeros((0,4,2),np.float32)
         return np.concatenate(s.V),np.concatenate(s.U)
 QO,QC,QW,QK,QP=Q(),Q(),Q(),Q(),Q()     # opaque, cutout, water, cloud, plants (croix, maillage à part pour l'animation)
+QWL=Q(); LAGOON=np.load("lagoon.npy")    # eau de la lagune (world.py) : matériau à part (lueur, scene.py)
 
 # ---------------- faces voxel (vectorisé)
 DIRS=[((1,0,0),1),((-1,0,0),1),((0,1,0),1),((0,-1,0),1),((0,0,1),0),((0,0,-1),2)]
@@ -80,7 +84,9 @@ for (d,fcat) in DIRS:
         V=base[:,None,:]+corners[None]
         if kind=="w":
             V[...,2]=np.where(V[...,2]==0,-0.12,V[...,2])     # surface d'eau un peu abaissée
-            QQ.add(V,np.zeros((len(V),4,2),np.float32)); continue
+            lg=LAGOON[idx[:,0],idx[:,1]]
+            QWL.add(V[lg],np.zeros((int(lg.sum()),4,2),np.float32))
+            QQ.add(V[~lg],np.zeros((int((~lg).sum()),4,2),np.float32)); continue
         b=cur[m]
         h=(idx[:,0]*73856093 ^ idx[:,1]*19349663 ^ idx[:,2]*83492791)&0xffff
         var=h%3
@@ -143,6 +149,7 @@ for s in np.arange(DECK_S0,DECK_S1,2.0):
         # vu depuis +t (caméra) : +s part vers la gauche, d'où le miroir (arête éclairée du gousset côté soleil)
         quad_uv(QT,(s,tp,ZP+0.5),(1,0,0),(0,0,1),tB,flip=True); quad_uv(QT,(s+1,tp,ZP+0.5),(1,0,0),(0,0,1),tA,flip=True)
         quad_uv(QT,(s,tp,ZP),(1,0,0),(0,0,0.5),tC,0.0,0.5,True); quad_uv(QT,(s+1,tp,ZP),(1,0,0),(0,0,0.5),tC,0.5,1.0,True)
+        face_grid(QS,(s,tp-0.3*np.sign(tp),ZP),(1,0,0),(0,0,1),2.0,0.75,sd)   # v3.1 : tôle sombre derrière la moitié basse (photo : ciel en haut seulement)
     box(QS,s-0.25,s+0.25,-3.5,3.5,9.25,9.5,sd,sd,sd)         # pièces de pont minces (leurs abouts prennent le soleil rasant)
 # passerelle de visite en treillis devant chaque pile, pendue sous le tablier (photo : côté caméra de la pile)
 for sc in (0.0,260.0):
@@ -151,25 +158,29 @@ for sc in (0.0,260.0):
         quad_uv(QT,(sp,t,7.5),(0,1.5,0),(0,0,1.5),lat,flip=bool(k%2))
     for t,zt in ((-8.0,9.0),(4.0,9.5)):                      # montants : vers le chaperon de la pile / sous la membrure
         box(QS,sp-0.1,sp+0.1,t-0.1,t+0.1,7.5,zt,st,st,st)
-# câbles porteurs (segments de 0.5 m, hauteur quantifiée au 1/16)
+# câbles porteurs : escalier au texel (pas de 1/16 m, z arrondi au 1/16, paliers de même z fusionnés : marche <= 1/16 m)
 def cable_z(s):
     if s<0:   return 30.35+0.45*s+0.0011*s*s
     if s<=260:
         zm=12.9; return zm+(30.35-zm)*((s-130)/130)**2
     d=s-260; return 30.35-0.45*d+0.0011*d*d
-CT=0.36
+CT=0.25
 for tcab in (4.0,-4.0):
-    s=-62.0
-    while s<322:
-        z=round(cable_z(s+0.25)*16)/16
-        if z>9.6: box(QO,s,s+0.5,tcab-CT/2,tcab+CT/2,z-CT/2,z+CT/2,cab,cab,cab)
-        s+=0.5
-    # suspentes tous les 4 m
+    ds_=1/16; s=-62.0; run0=None; zr=None
+    while True:
+        z=round(cable_z(s+ds_/2)*16)/16 if s<322-1e-9 else None
+        if z!=zr:
+            if zr is not None and zr>9.6: box(QO,run0,s,tcab-CT/2,tcab+CT/2,zr-CT/2,zr+CT/2,cab,cab,cab)
+            run0=s; zr=z
+        if z is None: break
+        s=round(s+ds_,6)
+    # suspentes tous les 4 m, collier acier sombre à l'attache
     for s in np.arange(-56,320,4.0):
         if abs(s)<2 or abs(s-260)<2: continue
         ztop=cable_z(s)
         if ztop>12.4:
-            box(QO,s-0.07,s+0.07,tcab-0.07,tcab+0.07,12.0,ztop,cab,cab,cab)
+            box(QO,s-0.05,s+0.05,tcab-0.05,tcab+0.05,12.0,ztop,cab,cab,cab)
+            box(QO,s-0.09,s+0.09,tcab-CT/2-0.04,tcab+CT/2+0.04,ztop-CT/2-0.12,ztop+CT/2+0.02,sd,sd,sd)
 # ---------------- plantes (croix)
 tg=Tn("tallgrass"); dg=Tn("drygrass"); fy=Tn("flower_yellow"); fw=Tn("flower_white")
 def cross(x,y,z,tile,sz=1.0):
@@ -188,6 +199,18 @@ def cross2(x,y,z,tile,h=1.0,v0=None,fl=False):
         V=[(x-dx,y-dy,z),(x+dx,y+dy,z),(x+dx,y+dy,z+h),(x-dx,y-dy,z+h)]
         QP.add(np.array([V]),np.stack([u,v],-1)[None])
 Hs=H
+# v3.1 : plantes de la grève et du talus (branche à part, aléa propre)
+GRV=(PEBBLES,TUFT,TALUS,PEB_GRASS)
+rg_=np.random.default_rng(3132)
+gst=Tn("grass_strand"); tpl=Tn("tuft_plant"); gdn=Tn("grass_dense")
+SHRUB_C=((-6,0,2.5),(-13,-10,2.1))                                   # arbustes de world.py (s, t, rayon)
+def plant3(x,y,z,tile,h,fl=False):
+    """croix de hauteur h (m) portant la tuile entière (herbes hautes, 0,5-1,5 m) ; largeur ~ hauteur"""
+    d=0.36*max(0.8,min(h,1.3))
+    u,v=tile_uv(tile,np.array([1,0,0,1.]) if fl else np.array([0,1,1,0.]),np.array([0,0,1,1.]))
+    for (dx,dy) in ((d,d),(d,-d)):
+        V=[(x-dx,y-dy,z),(x+dx,y+dy,z),(x+dx,y+dy,z+h),(x-dx,y-dy,z+h)]
+        QP.add(np.array([V]),np.stack([u,v],-1)[None])
 # pelouse et bande verte (terre ferme proche, H>=2) : aléa propre, plantes basses près de la caméra.
 # dtr = distance au trajet de la caméra (photo -> fin des travellings testés : 10-16 m vers le fleuve, 0-5 m à droite)
 rp=np.random.default_rng(3031)
@@ -202,9 +225,32 @@ for i in range(NS):
         t=j+T0
         if t<-60 or t>60: continue
         k=Hs[i,j]-Z0
-        if k<0 or k>=NZ or Hs[i,j]<1: continue
+        if k<0 or k>=NZ or (Hs[i,j]<1 and not (k>0 and vox[i,j,k-1] in GRV)): continue   # v3.1 : galets au ras de l'eau (H=0) admis
         base=vox[i,j,k-1]
         if vox[i,j,k]!=AIR: continue
+        if base in GRV:                    # v3.1 : grève et talus (galets, buttes, TALUS) : aléa propre rg_, rp et rng inchangés
+            x,y=s+0.5+rg_.uniform(-0.2,0.2),t+0.5+rg_.uniform(-0.2,0.2); z=Hs[i,j]; fl=rg_.random()<0.5; r_=rg_.random(); r2_=rg_.random()
+            dsh=min(math.hypot(s+0.5-a,t+0.5-b)-c for a,b,c in SHRUB_C)          # distance au bord des arbustes
+            nlow=[Hs[min(max(i+a,0),NS-1),min(max(j+b,0),NT-1)] for a,b in ((1,0),(-1,0),(0,1),(0,-1))]
+            if base==TALUS:                # bande d'herbes vertes denses sur les marches (bord de la lagune : plus basse à f1)
+                lag=any(LAGOON[min(max(i+a,0),NS-1),min(max(j+b,0),NT-1)] for a,b in ((1,0),(-1,0),(0,1),(0,-1)))
+                if Hs[i,j]<=1: h_=0.55+0.2*r2_ if t<16 else (0.8+0.3*r2_ if t<22 else 1.0+0.5*r2_)
+                elif Hs[i,j]==2: h_=0.7+0.3*r2_
+                else: h_=0.6
+                if Hs[i,j]>=3:             # marches hautes (près de la caméra) : touffes éparses, pas de haie
+                    if r_<0.25: cross2(x,y,z,tpl,h_,fl=fl)
+                elif r_<(0.85 if (lag or Hs[i,j]<=1) else 0.65): plant3(x,y,z,gdn if r2_<0.7 else tg,h_,fl=fl)
+            elif base==TUFT:
+                if dsh<1.5 and r_<0.45: plant3(x,y,z,gst,1.0+0.3*r2_,fl=fl)                       # herbes gris-vert au pied des arbustes
+                elif min(nlow)<Hs[i,j] and r_<0.8:                                                      # bord de butte : touffe débordant sur le flanc
+                    a,b=((1,0),(-1,0),(0,1),(0,-1))[int(np.argmin(nlow))]
+                    cross2(x+0.3*a,y+0.3*b,z,tpl,(0.6,0.8,1.0)[int(r2_*3)],fl=fl)
+                elif r_<0.15: cross2(x,y,z,tpl,0.6,fl=fl)
+            elif base==PEB_GRASS:
+                if r_<0.3: cross2(x,y,z,tpl,0.6 if r2_<0.6 else 0.8,fl=fl)
+            elif dsh<2.0 and r_<0.3: plant3(x,y,z,gst,0.9+0.3*r2_,fl=fl)
+            elif r_<0.04: cross2(x,y,z,tpl,0.6,fl=fl)
+            continue
         if Hs[i,j]>=2 and s<-26 and base in LAWN:
             x,y=s+0.5+rp.uniform(-0.15,0.15),t+0.5+rp.uniform(-0.15,0.15); z=Hs[i,j]; fl=rp.random()<0.5
             d=dtr(np.array([x,y])); r_=rp.random()
@@ -271,7 +317,7 @@ for i,j in np.argwhere(cm):
     if not cpad[i+1,j]:   Vs.append([(x0,y0,cz0),(x0+cs,y0,cz0),(x0+cs,y0,cz1),(x0,y0,cz1)])
     QK.add(np.array(Vs),np.zeros((len(Vs),4,2)))
 out={}
-for name,QQ in (("opaque",QO),("cutout",QC),("water",QW),("cloud",QK),("plants",QP)):
+for name,QQ in (("opaque",QO),("cutout",QC),("water",QW),("water_lagoon",QWL),("cloud",QK),("plants",QP)):
     V,U=QQ.arr(); out["V_"+name]=V; out["U_"+name]=U; print(name,len(V),"quads")
 for name,QQ in (("steel",QS),("truss",QT)):   # tablier : acier mat (matériaux dédiés dans scene.py)
     V,U=QQ.arr(); out["V_"+name]=V; out["U_"+name]=U; print(name,len(V),"quads")
